@@ -529,11 +529,12 @@ insert into matrices (categorie, cle, libelle, valeur, unite) values
   ('saison', 'tres_haute', 'Saison très haute (mai, juin)',          1.15, 'pct');
 
 -- --- 6.3 Anticipation (jours entre date_demande et date_depart) ---
+-- Seuils OFFICIELS (doc v2) en jours d'écart date_demande -> date_depart.
 insert into matrices (categorie, cle, libelle, valeur, unite, borne_min, borne_max) values
-  ('anticipation', 'DD_PRIORITAIRE',  'Prioritaire (<48h)',           1.10, 'pct', 0,   2),
-  ('anticipation', 'DD_URGENT',       'Urgent (2-7 jours)',           1.05, 'pct', 2,   7),
-  ('anticipation', 'DD_NORMAL',       'Normal (7j-3 mois)',           0.95, 'pct', 7,   90),
-  ('anticipation', 'DD_3MOISETPLUS',  '3 mois et plus (>90j)',        0.90, 'pct', 90,  99999);
+  ('anticipation', 'DD_PRIORITAIRE',  'Prioritaire (<= 14 j)',        1.10, 'pct', 0,   14),
+  ('anticipation', 'DD_URGENT',       'Urgent (15-30 j)',             1.05, 'pct', 15,  30),
+  ('anticipation', 'DD_NORMAL',       'Normal (31-90 j)',             0.95, 'pct', 31,  90),
+  ('anticipation', 'DD_3MOISETPLUS',  'Plus de 90 j',                 0.90, 'pct', 91,  99999);
 
 -- --- 6.4 Capacité (nb passagers) ---
 -- >85 : multi-véhicules => cas complexe, pas de coefficient de devis auto.

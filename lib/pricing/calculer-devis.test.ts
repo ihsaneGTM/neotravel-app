@@ -11,14 +11,14 @@ import { calculerDevis, DevisError, MATRICES_DEFAUT, type DevisInput, type Prici
  * Grille (≤km → €) : 30→250, 40→320, 50→350, 60→390, 80→500, 100→580,
  *                    120→660, 150→780, 180→900.
  * Saison : basse 0.93 | moyenne 1.00 | haute 1.10 | très haute 1.15.
- * Anticip : prioritaire 1.10 | urgent 1.05 | normal 0.95 | >3mois 0.90.
+ * Anticip (seuils officiels v2) : ≤14j prioritaire 1.10 | 15-30j urgent 1.05 | 31-90j normal 0.95 | >90j 0.90.
  * Capacité : ≤19 0.95 | 20-53 1.00 | 54-63 1.15 | 64-67 1.20 | 68-85 1.40.
  */
 
 describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () => {
-  // CAS 1 — simple grille : 100km AS, 30 pax(0%), sept(moyenne), normal(0.95)
-  // 580 ×1.0 ×0.95 ×1.0 = 551 ; ×1.15 = 633.65 → HT 634 ; TVA 63.4 ; TTC 697.4
-  it("CAS 1 — transfert simple grille 100 km", () => {
+  // CAS 1 — grille : 100km AS, 30 pax(0%), sept(1.0), ecart 30j → urgent(1.05)
+  // 580 ×1.0 ×1.05 ×1.0 = 609 ; ×1.15 = 700.35 → HT 700 ; TVA 70 ; TTC 770
+  it("CAS 1 — transfert simple grille 100 km (urgent 30j)", () => {
     const r = calculerDevis({
       nb_passagers: 30,
       type_deplacement: "aller_simple",
@@ -27,14 +27,15 @@ describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () =>
       date_depart: "2026-09-30",
     });
     expect(r.meta.base_ht).toBe(580);
-    expect(r.prix_ht).toBe(634);
-    expect(r.tva).toBe(63.4);
-    expect(r.prix_ttc).toBe(697.4);
+    expect(r.coefficients.find((c) => c.nom === "anticipation")?.valeur).toBe(1.05);
+    expect(r.prix_ht).toBe(700);
+    expect(r.tva).toBe(70);
+    expect(r.prix_ttc).toBe(770);
     expect(r.meta.type_vehicule).toBe("autocar_standard");
   });
 
-  // CAS 2 — aller/retour = simple ×2 : 100km AR, 30 pax, sept, normal
-  // base 1160 ×1.0 ×0.95 ×1.0 = 1102 ; ×1.15 = 1267.3 → HT 1267 ; TTC 1393.7
+  // CAS 2 — aller/retour = simple ×2 : 100km AR, 30 pax, sept, urgent(1.05)
+  // base 1160 ×1.0 ×1.05 ×1.0 = 1218 ; ×1.15 = 1400.7 → HT 1401 ; TTC 1541.1
   it("CAS 2 — aller/retour = transfert simple × 2", () => {
     const r = calculerDevis({
       nb_passagers: 30,
@@ -45,12 +46,12 @@ describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () =>
       date_retour: "2026-10-01",
     });
     expect(r.meta.base_ht).toBe(1160);
-    expect(r.prix_ht).toBe(1267);
-    expect(r.prix_ttc).toBe(1393.7);
+    expect(r.prix_ht).toBe(1401);
+    expect(r.prix_ttc).toBe(1541.1);
   });
 
-  // CAS 3 — minibus + saison basse : 40km AS, 12 pax(≤19 0.95), janv(0.93), normal(0.95)
-  // 320 ×0.93 ×0.95 ×0.95 = 268.584 ; ×1.15 = 308.8716 → HT 309 ; TTC 339.9
+  // CAS 3 — minibus + saison basse : 40km AS, 12 pax(0.95), janv(0.93), urgent 30j(1.05)
+  // 320 ×0.93 ×1.05 ×0.95 = 296.856 ; ×1.15 = 341.3844 → HT 341 ; TTC 375.1
   it("CAS 3 — minibus ≤19 + saison basse (40 km)", () => {
     const r = calculerDevis({
       nb_passagers: 12,
@@ -60,29 +61,30 @@ describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () =>
       date_depart: "2026-01-20",
     });
     expect(r.meta.base_ht).toBe(320);
-    expect(r.prix_ht).toBe(309);
-    expect(r.tva).toBe(30.9);
-    expect(r.prix_ttc).toBe(339.9);
+    expect(r.prix_ht).toBe(341);
+    expect(r.tva).toBe(34.1);
+    expect(r.prix_ttc).toBe(375.1);
     expect(r.meta.type_vehicule).toBe("minibus");
   });
 
-  // CAS 4 — arrondi de tranche : 45km → tranche 50 → 350 ; 25 pax, oct(1.0), normal
+  // CAS 4 — bande NORMAL : 45km → 350 ; 25 pax, oct(1.0), ecart 45j → normal(0.95)
   // 350 ×1 ×0.95 ×1 = 332.5 ; ×1.15 = 382.375 → HT 382 ; TTC 420.2
-  it("CAS 4 — distance 45 km arrondie à la tranche 50 km (350 €)", () => {
+  it("CAS 4 — tranche 50 km + anticipation normale (45j)", () => {
     const r = calculerDevis({
       nb_passagers: 25,
       type_deplacement: "aller_simple",
       distance_km: 45,
-      date_demande: "2026-09-20",
+      date_demande: "2026-09-05",
       date_depart: "2026-10-20",
     });
     expect(r.meta.base_ht).toBe(350);
+    expect(r.coefficients.find((c) => c.nom === "anticipation")?.valeur).toBe(0.95);
     expect(r.prix_ht).toBe(382);
     expect(r.prix_ttc).toBe(420.2);
   });
 
-  // CAS 5 — plancher ≤30km : 15km → tranche 20 → 250 ; 30 pax, sept, normal
-  // 250 ×1 ×0.95 ×1 = 237.5 ; ×1.15 = 273.125 → HT 273 ; TTC 300.3
+  // CAS 5 — plancher ≤30km : 15km → 250 ; 30 pax, sept, urgent 30j(1.05)
+  // 250 ×1 ×1.05 ×1 = 262.5 ; ×1.15 = 301.875 → HT 302 ; TTC 332.2
   it("CAS 5 — plancher 250 € (15 km)", () => {
     const r = calculerDevis({
       nb_passagers: 30,
@@ -92,8 +94,8 @@ describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () =>
       date_depart: "2026-09-30",
     });
     expect(r.meta.base_ht).toBe(250);
-    expect(r.prix_ht).toBe(273);
-    expect(r.prix_ttc).toBe(300.3);
+    expect(r.prix_ht).toBe(302);
+    expect(r.prix_ttc).toBe(332.2);
   });
 
   // CAS 6 — au-delà de 180 km (formule) : 200km AS, 40 pax, mars(1.10), >3mois(0.90)
@@ -112,9 +114,9 @@ describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () =>
     expect(r.prix_ttc).toBe(1252.9);
   });
 
-  // CAS 7 — capacité +40% : 150km AS, 75 pax(68-85 1.40), sept(1.0), urgent(1.05)
-  // 780 ×1.0 ×1.05 ×1.40 = 1146.6 ; ×1.15 = 1318.59 → HT 1319 ; TTC 1450.9
-  it("CAS 7 — grande capacité 68-85 (+40%) + urgent", () => {
+  // CAS 7 — capacité +40% : 150km AS, 75 pax(68-85 1.40), sept(1.0), ecart 5j → prioritaire(1.10)
+  // 780 ×1.0 ×1.10 ×1.40 = 1201.2 ; ×1.15 = 1381.38 → HT 1381 ; TTC 1519.1
+  it("CAS 7 — grande capacité 68-85 (+40%) + prioritaire", () => {
     const r = calculerDevis({
       nb_passagers: 75,
       type_deplacement: "aller_simple",
@@ -122,8 +124,9 @@ describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () =>
       date_demande: "2026-09-15",
       date_depart: "2026-09-20",
     });
-    expect(r.prix_ht).toBe(1319);
-    expect(r.prix_ttc).toBe(1450.9);
+    expect(r.coefficients.find((c) => c.nom === "anticipation")?.valeur).toBe(1.1);
+    expect(r.prix_ht).toBe(1381);
+    expect(r.prix_ttc).toBe(1519.1);
     expect(r.meta.type_vehicule).toBe("autocar_grand_tourisme");
   });
 
@@ -143,8 +146,8 @@ describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () =>
     expect(r.prix_ttc).toBe(1600.5);
   });
 
-  // CAS 9 — capacité +15% (54 pax) : 60km AS, oct(1.0), normal(0.95)
-  // 390 ×1 ×0.95 ×1.15 = 426.075 ; ×1.15 = 489.986 → HT 490 ; TTC 539
+  // CAS 9 — capacité +15% (54 pax) : 60km AS, oct(1.0), urgent 30j(1.05)
+  // 390 ×1 ×1.05 ×1.15 = 470.925 ; ×1.15 = 541.563 → HT 542 ; TTC 596.2
   it("CAS 9 — capacité 54-63 (+15%)", () => {
     const r = calculerDevis({
       nb_passagers: 54,
@@ -153,14 +156,14 @@ describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () =>
       date_demande: "2026-09-20",
       date_depart: "2026-10-20",
     });
-    expect(r.prix_ht).toBe(490);
-    expect(r.tva).toBe(49);
-    expect(r.prix_ttc).toBe(539);
+    expect(r.prix_ht).toBe(542);
+    expect(r.tva).toBe(54.2);
+    expect(r.prix_ttc).toBe(596.2);
     expect(r.meta.type_vehicule).toBe("autocar_grand_tourisme");
   });
 
-  // CAS 10 — capacité +20% (65 pax) : 120km AS, juin(1.15), normal(0.95)
-  // 660 ×1.15 ×0.95 ×1.20 = 865.26 ; ×1.15 = 995.049 → HT 995 ; TTC 1094.5
+  // CAS 10 — capacité +20% (65 pax) : 120km AS, juin(1.15), urgent 30j(1.05)
+  // 660 ×1.15 ×1.05 ×1.20 = 956.34 ; ×1.15 = 1099.791 → HT 1100 ; TTC 1210
   it("CAS 10 — capacité 64-67 (+20%) + très haute", () => {
     const r = calculerDevis({
       nb_passagers: 65,
@@ -169,33 +172,33 @@ describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () =>
       date_demande: "2026-05-21",
       date_depart: "2026-06-20",
     });
-    expect(r.prix_ht).toBe(995);
-    expect(r.prix_ttc).toBe(1094.5);
+    expect(r.prix_ht).toBe(1100);
+    expect(r.prix_ttc).toBe(1210);
   });
 
-  // CAS 11 — borne anticipation : écart 2j ⇒ urgent (pas prioritaire)
-  // 100km AS, déc(1.0), urgent(1.05). 580 ×1 ×1.05 ×1 = 609 ; ×1.15 = 700.35 → HT 700 ; TTC 770
-  it("CAS 11 — borne anticipation 2j ⇒ urgent", () => {
-    const r = calculerDevis({
-      nb_passagers: 25,
-      type_deplacement: "aller_simple",
-      distance_km: 100,
-      date_demande: "2026-12-01",
-      date_depart: "2026-12-03",
-    });
-    expect(r.coefficients.find((c) => c.nom === "anticipation")?.valeur).toBe(1.05);
-    expect(r.prix_ht).toBe(700);
-    expect(r.prix_ttc).toBe(770);
-  });
-
-  // CAS 12 — borne anticipation : écart 90j ⇒ >3mois (0.90)
-  // 100km AS, sept(1.0). 580 ×1 ×0.90 ×1 = 522 ; ×1.15 = 600.3 → HT 600 ; TTC 660
-  it("CAS 12 — borne anticipation 90j ⇒ >3 mois", () => {
+  // CAS 11 — borne anticipation : écart 14j ⇒ prioritaire (1.10), pas urgent
+  // 100km AS, sept(1.0). 580 ×1 ×1.10 ×1 = 638 ; ×1.15 = 733.7 → HT 734 ; TTC 807.4
+  it("CAS 11 — borne anticipation 14j ⇒ prioritaire", () => {
     const r = calculerDevis({
       nb_passagers: 30,
       type_deplacement: "aller_simple",
       distance_km: 100,
-      date_demande: "2026-07-02",
+      date_demande: "2026-09-16",
+      date_depart: "2026-09-30",
+    });
+    expect(r.coefficients.find((c) => c.nom === "anticipation")?.valeur).toBe(1.1);
+    expect(r.prix_ht).toBe(734);
+    expect(r.prix_ttc).toBe(807.4);
+  });
+
+  // CAS 12 — borne anticipation : écart 91j ⇒ >90j (0.90)
+  // 100km AS, sept(1.0). 580 ×1 ×0.90 ×1 = 522 ; ×1.15 = 600.3 → HT 600 ; TTC 660
+  it("CAS 12 — anticipation 91j ⇒ > 90 jours (-10%)", () => {
+    const r = calculerDevis({
+      nb_passagers: 30,
+      type_deplacement: "aller_simple",
+      distance_km: 100,
+      date_demande: "2026-07-01",
       date_depart: "2026-09-30",
     });
     expect(r.coefficients.find((c) => c.nom === "anticipation")?.valeur).toBe(0.9);

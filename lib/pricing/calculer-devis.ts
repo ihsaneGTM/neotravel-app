@@ -172,12 +172,12 @@ export const MATRICES_DEFAUT: PricingMatrices = {
     11: { coeff: 0.93, libelle: "basse" }, //  novembre
     12: { coeff: 1.0, libelle: "moyenne" }, // décembre
   },
-  // Seuils en jours non fournis par le doc (« pilotables ») — interprétation retenue.
+  // Seuils OFFICIELS (doc v2) : ≤14j prioritaire ; 15-30 urgent ; 31-90 normal ; >90 anticipé.
   anticipation: [
-    { code: "DD_PRIORITAIRE", jours_min: 0, jours_max: 2, coeff: 1.1, libelle: "prioritaire (<48h)" },
-    { code: "DD_URGENT", jours_min: 2, jours_max: 7, coeff: 1.05, libelle: "urgent (2-7j)" },
-    { code: "DD_NORMAL", jours_min: 7, jours_max: 90, coeff: 0.95, libelle: "normal (7j-3mois)" },
-    { code: "DD_3MOISETPLUS", jours_min: 90, jours_max: null, coeff: 0.9, libelle: "anticipé (>3mois)" },
+    { code: "DD_PRIORITAIRE", jours_min: 0, jours_max: 15, coeff: 1.1, libelle: "prioritaire (≤14j)" },
+    { code: "DD_URGENT", jours_min: 15, jours_max: 31, coeff: 1.05, libelle: "urgent (15-30j)" },
+    { code: "DD_NORMAL", jours_min: 31, jours_max: 91, coeff: 0.95, libelle: "normal (31-90j)" },
+    { code: "DD_3MOISETPLUS", jours_min: 91, jours_max: null, coeff: 0.9, libelle: "anticipé (>90j)" },
   ],
   capacite: [
     { pax_min: 1, pax_max: 19, coeff: 0.95, libelle: "≤19 (-5%)", type_vehicule: "minibus" },
