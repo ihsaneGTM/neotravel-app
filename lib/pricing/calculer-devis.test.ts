@@ -1,271 +1,222 @@
 import { describe, expect, it } from "vitest";
-import { calculerDevis, DevisError, MATRICES_DEFAUT, type DevisInput } from "./calculer-devis";
+import { calculerDevis, DevisError, MATRICES_DEFAUT, type DevisInput, type PricingMatrices } from "./calculer-devis";
 
 /**
- * GOLDEN DATASET — moteur de devis NeoTravel.
+ * GOLDEN DATASET — conforme à « REGLES DE CALCUL COTATION DEVIS NEOTRAVEL ».
  *
- * Chaque cas chiffré est calculé À LA MAIN dans le commentaire, en suivant
- * l'ORDRE : base → ×saison → ×anticipation → ×capacité → +options
- *          → sous-total HT → +marge 15% → arrondi HT → +TVA 10% → TTC.
+ * Chaîne : base (grille forfait ≤180km | (km×2)×2,5 au-delà ; ×2 si AR)
+ *          → ×saison → ×anticipation → ×capacité
+ *          → ×marge 1.15 → arrondi HT à l'euro → +TVA 10% → TTC.
  *
- * Matrices par défaut : prix_par_km = 2.50 €, min = 350 €, marge = 0.15, TVA = 0.10.
- * Coeffs saison : basse 0.93 | moyenne 1.00 | haute 1.10 | très haute 1.15.
- * Coeffs anticip : >90j 0.90 | 7-90j 0.95 | 2-7j 1.05 | <48h 1.10.
- * Coeffs capacité : ≤19 0.95 | 20-53 1.00 | 54-63 1.15 | 64-67 1.20 | 68-85 1.40.
+ * Grille (≤km → €) : 30→250, 40→320, 50→350, 60→390, 80→500, 100→580,
+ *                    120→660, 150→780, 180→900.
+ * Saison : basse 0.93 | moyenne 1.00 | haute 1.10 | très haute 1.15.
+ * Anticip : prioritaire 1.10 | urgent 1.05 | normal 0.95 | >3mois 0.90.
+ * Capacité : ≤19 0.95 | 20-53 1.00 | 54-63 1.15 | 64-67 1.20 | 68-85 1.40.
  */
 
-describe("calculerDevis — cas nominaux chiffrés", () => {
-  // ── CAS 0 : DEVIS DE RÉFÉRENCE — 1628 € TTC ─────────────────────────────
-  // 21 pax, AR, 260 km, départ mars (haute +10%), demande > 90j avant (-10%).
-  // base = 260 × 2.50 × 2(AR)            = 1300.00
-  //   × saison haute 1.10                = 1430.00
-  //   × anticip >90j 0.90                = 1287.00
-  //   × capacité 20-53 1.00              = 1287.00
-  // sous-total HT                        = 1287.00
-  //   + marge 15% (×1.15)                = 1480.05  → arrondi HT = 1480
-  //   TVA 10% = 1480 × 0.10              = 148.00
-  //   TTC = 1480 + 148                   = 1628.00  ✓ référence
-  it("CAS 0 — référence 1628 € TTC (21 pax, AR 260 km, haute, >90j)", () => {
-    const input: DevisInput = {
-      nb_passagers: 21,
-      type_deplacement: "aller_retour",
-      distance_km: 260,
-      date_demande: "2026-01-01",
-      date_depart: "2026-03-15", // mars → haute ; écart 73j... attention
-    };
-    // 2026-01-01 → 2026-03-15 = 73 jours (< 90) ⇒ ce serait NORMAL (0.95), pas >90j.
-    // On ajuste la date de demande pour garantir l'écart > 90 jours.
-    input.date_demande = "2025-12-01"; // → 2026-03-15 = 104 jours > 90 ⇒ 0.90
-    const r = calculerDevis(input);
-    expect(r.prix_ht).toBe(1480);
-    expect(r.tva).toBe(148);
-    expect(r.prix_ttc).toBe(1628);
-    expect(r.devise).toBe("EUR");
-    // Audit : 3 coeffs métier + marge + tva.
-    expect(r.coefficients.find((c) => c.nom === "saison")?.valeur).toBe(1.1);
-    expect(r.coefficients.find((c) => c.nom === "anticipation")?.valeur).toBe(0.9);
-    expect(r.coefficients.find((c) => c.nom === "capacite")?.valeur).toBe(1.0);
-    expect(r.meta.type_vehicule).toBe("autocar_standard");
-    expect(r.meta.distance_facturee_km).toBe(520);
-  });
-
-  // ── CAS 1 : SIMPLE COMPLET — aller simple 1 journée ─────────────────────
-  // 30 pax, aller simple, 150 km, départ septembre (moyenne 1.00),
-  // demande 30j avant (7-90j → 0.95), capacité 20-53 (1.00).
-  // base = 150 × 2.50 = 375.00
-  //   × 1.00 = 375.00 ; × 0.95 = 356.25 ; × 1.00 = 356.25
-  // sous-total HT = 356.25
-  //   × 1.15 = 409.6875 → arrondi HT = 410
-  //   TVA = 41.00 ; TTC = 451.00
-  it("CAS 1 — simple complet (30 pax, AS 150 km, moyenne, normal)", () => {
+describe("calculerDevis — cas nominaux chiffrés (règles officielles)", () => {
+  // CAS 1 — simple grille : 100km AS, 30 pax(0%), sept(moyenne), normal(0.95)
+  // 580 ×1.0 ×0.95 ×1.0 = 551 ; ×1.15 = 633.65 → HT 634 ; TVA 63.4 ; TTC 697.4
+  it("CAS 1 — transfert simple grille 100 km", () => {
     const r = calculerDevis({
       nb_passagers: 30,
       type_deplacement: "aller_simple",
-      distance_km: 150,
-      date_demande: "2026-08-15",
-      date_depart: "2026-09-14", // septembre, écart 30j
+      distance_km: 100,
+      date_demande: "2026-08-31",
+      date_depart: "2026-09-30",
     });
-    expect(r.prix_ht).toBe(410);
-    expect(r.tva).toBe(41);
-    expect(r.prix_ttc).toBe(451);
+    expect(r.meta.base_ht).toBe(580);
+    expect(r.prix_ht).toBe(634);
+    expect(r.tva).toBe(63.4);
+    expect(r.prix_ttc).toBe(697.4);
+    expect(r.meta.type_vehicule).toBe("autocar_standard");
   });
 
-  // ── CAS 2 : PETIT GROUPE ≤19 (minibus) ──────────────────────────────────
-  // 12 pax, AS, 80 km, départ janvier (basse 0.93), demande 30j (0.95),
-  // capacité ≤19 (0.95).
-  // base = 80 × 2.50 = 200 → plancher 350.00
-  //   × 0.93 = 325.50 ; × 0.95 = 309.225 ; × 0.95 = 293.76375
-  // sous-total HT = 293.76375
-  //   × 1.15 = 337.8283 → arrondi HT = 338
-  //   TVA = 33.80 ; TTC = 371.80
-  it("CAS 2 — petit groupe minibus + plancher distance (12 pax, 80 km, basse)", () => {
+  // CAS 2 — aller/retour = simple ×2 : 100km AR, 30 pax, sept, normal
+  // base 1160 ×1.0 ×0.95 ×1.0 = 1102 ; ×1.15 = 1267.3 → HT 1267 ; TTC 1393.7
+  it("CAS 2 — aller/retour = transfert simple × 2", () => {
+    const r = calculerDevis({
+      nb_passagers: 30,
+      type_deplacement: "aller_retour",
+      distance_km: 100,
+      date_demande: "2026-08-31",
+      date_depart: "2026-09-30",
+      date_retour: "2026-10-01",
+    });
+    expect(r.meta.base_ht).toBe(1160);
+    expect(r.prix_ht).toBe(1267);
+    expect(r.prix_ttc).toBe(1393.7);
+  });
+
+  // CAS 3 — minibus + saison basse : 40km AS, 12 pax(≤19 0.95), janv(0.93), normal(0.95)
+  // 320 ×0.93 ×0.95 ×0.95 = 268.584 ; ×1.15 = 308.8716 → HT 309 ; TTC 339.9
+  it("CAS 3 — minibus ≤19 + saison basse (40 km)", () => {
     const r = calculerDevis({
       nb_passagers: 12,
       type_deplacement: "aller_simple",
-      distance_km: 80,
-      date_demande: "2026-01-01",
-      date_depart: "2026-01-31", // janvier, écart 30j
+      distance_km: 40,
+      date_demande: "2025-12-21",
+      date_depart: "2026-01-20",
     });
-    expect(r.prix_ht).toBe(338);
-    expect(r.tva).toBe(33.8);
-    expect(r.prix_ttc).toBe(371.8);
+    expect(r.meta.base_ht).toBe(320);
+    expect(r.prix_ht).toBe(309);
+    expect(r.tva).toBe(30.9);
+    expect(r.prix_ttc).toBe(339.9);
     expect(r.meta.type_vehicule).toBe("minibus");
   });
 
-  // ── CAS 3 : PLANCHER DISTANCE (très court trajet) ───────────────────────
-  // 10 pax, AS, 20 km, départ septembre (moyenne 1.00), demande 30j (0.95),
-  // capacité ≤19 (0.95).
-  // base = 20 × 2.50 = 50 → plancher 350.00
-  //   × 1.00 = 350.00 ; × 0.95 = 332.50 ; × 0.95 = 315.875
-  // sous-total HT = 315.875
-  //   × 1.15 = 363.25625 → arrondi HT = 363
-  //   TVA = 36.30 ; TTC = 399.30
-  it("CAS 3 — plancher distance déclenché (10 pax, 20 km, moyenne)", () => {
+  // CAS 4 — arrondi de tranche : 45km → tranche 50 → 350 ; 25 pax, oct(1.0), normal
+  // 350 ×1 ×0.95 ×1 = 332.5 ; ×1.15 = 382.375 → HT 382 ; TTC 420.2
+  it("CAS 4 — distance 45 km arrondie à la tranche 50 km (350 €)", () => {
     const r = calculerDevis({
-      nb_passagers: 10,
+      nb_passagers: 25,
       type_deplacement: "aller_simple",
-      distance_km: 20,
-      date_demande: "2026-08-15",
-      date_depart: "2026-09-14",
+      distance_km: 45,
+      date_demande: "2026-09-20",
+      date_depart: "2026-10-20",
     });
-    expect(r.prix_ht).toBe(363);
-    expect(r.tva).toBe(36.3);
-    expect(r.prix_ttc).toBe(399.3);
-    // La 1ʳᵉ ligne mentionne le plancher.
-    expect(r.lignes[0].libelle).toContain("plancher");
+    expect(r.meta.base_ht).toBe(350);
+    expect(r.prix_ht).toBe(382);
+    expect(r.prix_ttc).toBe(420.2);
   });
 
-  // ── CAS 4 : CIRCUIT MULTI-ÉTAPES + GUIDE + NUIT CHAUFFEUR ────────────────
-  // 60 pax, circuit étapes [120,90,140] = 350 km, départ mars (haute 1.10),
-  // demande 60j (7-90j → 0.95), capacité 54-63 (+15% → 1.15).
-  // Dates : départ 2026-03-10, retour 2026-03-11 ⇒ nb_jours = 2, nuitées = 1.
-  // base = 350 × 2.50 = 875.00
-  //   × 1.10 = 962.50 ; × 0.95 = 914.375 ; × 1.15 = 1051.53125
-  //   + guide 80 €/j × 2 = 160 ; + nuit chauffeur 120 €/nuit × 1 = 120
-  // sous-total HT = 1051.53125 + 160 + 120 = 1331.53125
-  //   × 1.15 = 1531.2609 → arrondi HT = 1531
-  //   TVA = 153.10 ; TTC = 1684.10
-  it("CAS 4 — circuit 3 étapes + guide + nuit chauffeur (60 pax, haute)", () => {
+  // CAS 5 — plancher ≤30km : 15km → tranche 20 → 250 ; 30 pax, sept, normal
+  // 250 ×1 ×0.95 ×1 = 237.5 ; ×1.15 = 273.125 → HT 273 ; TTC 300.3
+  it("CAS 5 — plancher 250 € (15 km)", () => {
     const r = calculerDevis({
-      nb_passagers: 60,
-      type_deplacement: "circuit",
-      etapes_km: [120, 90, 140],
-      date_demande: "2026-01-09",
-      date_depart: "2026-03-10",
-      date_retour: "2026-03-11",
-      options: [{ type: "guide" }, { type: "nuit_chauffeur" }],
+      nb_passagers: 30,
+      type_deplacement: "aller_simple",
+      distance_km: 15,
+      date_demande: "2026-08-31",
+      date_depart: "2026-09-30",
     });
-    expect(r.meta.nb_jours).toBe(2);
-    expect(r.meta.nuitees).toBe(1);
-    expect(r.prix_ht).toBe(1531);
-    expect(r.tva).toBe(153.1);
-    expect(r.prix_ttc).toBe(1684.1);
-    expect(r.meta.type_vehicule).toBe("autocar_grand_tourisme");
-    // Audit des options.
-    expect(r.lignes.some((l) => l.libelle.includes("guide") && l.montant === 160)).toBe(true);
-    expect(r.lignes.some((l) => l.libelle.includes("nuit chauffeur") && l.montant === 120)).toBe(true);
+    expect(r.meta.base_ht).toBe(250);
+    expect(r.prix_ht).toBe(273);
+    expect(r.prix_ttc).toBe(300.3);
   });
 
-  // ── CAS 5 : OPTION NUIT CHAUFFEUR SUR SÉJOUR 2 JOURS (AR) ────────────────
-  // 40 pax, AR, 200 km, départ octobre (moyenne 1.00), demande 30j (0.95),
-  // capacité 20-53 (1.00). Séjour 2 jours via dates ⇒ nuitées = 1.
-  // base = 200 × 2.50 × 2 = 1000.00
-  //   × 1.00 = 1000 ; × 0.95 = 950 ; × 1.00 = 950
-  //   + nuit chauffeur 120 × 1 = 120
-  // sous-total HT = 1070.00
-  //   × 1.15 = 1230.50 → arrondi HT = 1231 (1230.50 arrondi sup)
-  //   TVA = 123.10 ; TTC = 1354.10
-  it("CAS 5 — nuit chauffeur sur séjour 2 jours (40 pax, AR 200 km)", () => {
+  // CAS 6 — au-delà de 180 km (formule) : 200km AS, 40 pax, mars(1.10), >3mois(0.90)
+  // base = (200×2)×2.5 = 1000 ; ×1.10 ×0.90 ×1.0 = 990 ; ×1.15 = 1138.5 → HT 1139 ; TTC 1252.9
+  it("CAS 6 — distance > 180 km (formule (km×2)×2,5)", () => {
     const r = calculerDevis({
       nb_passagers: 40,
-      type_deplacement: "aller_retour",
+      type_deplacement: "aller_simple",
       distance_km: 200,
-      date_demande: "2026-09-10",
-      date_depart: "2026-10-10",
-      date_retour: "2026-10-11",
-      options: [{ type: "nuit_chauffeur" }],
+      date_demande: "2025-12-01",
+      date_depart: "2026-03-15",
     });
-    expect(r.meta.nuitees).toBe(1);
-    expect(r.prix_ht).toBe(1231);
-    expect(r.tva).toBe(123.1);
-    expect(r.prix_ttc).toBe(1354.1);
+    expect(r.meta.base_ht).toBe(1000);
+    expect(r.prix_ht).toBe(1139);
+    expect(r.tva).toBe(113.9);
+    expect(r.prix_ttc).toBe(1252.9);
   });
 
-  // ── CAS 6 : CAPACITÉ 68-85 (+40%) ───────────────────────────────────────
-  // 75 pax, AS, 300 km, départ octobre (moyenne 1.00), demande 5j (2-7j → 1.05),
-  // capacité 68-85 (+40% → 1.40).
-  // base = 300 × 2.50 = 750.00
-  //   × 1.00 = 750 ; × 1.05 = 787.50 ; × 1.40 = 1102.50
-  // sous-total HT = 1102.50
-  //   × 1.15 = 1267.875 → arrondi HT = 1268
-  //   TVA = 126.80 ; TTC = 1394.80
-  it("CAS 6 — grande capacité 68-85 +40% (75 pax, urgent)", () => {
+  // CAS 7 — capacité +40% : 150km AS, 75 pax(68-85 1.40), sept(1.0), urgent(1.05)
+  // 780 ×1.0 ×1.05 ×1.40 = 1146.6 ; ×1.15 = 1318.59 → HT 1319 ; TTC 1450.9
+  it("CAS 7 — grande capacité 68-85 (+40%) + urgent", () => {
     const r = calculerDevis({
       nb_passagers: 75,
       type_deplacement: "aller_simple",
-      distance_km: 300,
-      date_demande: "2026-10-05",
-      date_depart: "2026-10-10", // écart 5j → urgent
+      distance_km: 150,
+      date_demande: "2026-09-15",
+      date_depart: "2026-09-20",
     });
-    expect(r.prix_ht).toBe(1268);
-    expect(r.tva).toBe(126.8);
-    expect(r.prix_ttc).toBe(1394.8);
+    expect(r.prix_ht).toBe(1319);
+    expect(r.prix_ttc).toBe(1450.9);
+    expect(r.meta.type_vehicule).toBe("autocar_grand_tourisme");
   });
 
-  // ── CAS 7 : URGENCE <48h (chiffrable, mais à MASQUER côté agent) ─────────
-  // 40 pax, AR, 200 km, départ mai (très haute 1.15), demande 1j avant (<48h → 1.10),
-  // capacité 20-53 (1.00).
-  // base = 200 × 2.50 × 2 = 1000.00
-  //   × 1.15 = 1150 ; × 1.10 = 1265 ; × 1.00 = 1265
-  // sous-total HT = 1265.00
-  //   × 1.15 = 1454.75 → arrondi HT = 1455
-  //   TVA = 145.50 ; TTC = 1600.50
-  // NB : le moteur chiffre ; la POLITIQUE (<48h ⇒ pas de devis auto) est gérée
-  // en amont par l'agent. Le coefficient prioritaire est bien tracé.
-  it("CAS 7 — urgence <48h chiffrée (coeff prioritaire 1.10)", () => {
+  // CAS 8 — AR très haute + prioritaire : 80km AR, 53 pax(0%), mai(1.15), <48h(1.10)
+  // base 1000 ×1.15 ×1.10 ×1.0 = 1265 ; ×1.15 = 1454.75 → HT 1455 ; TTC 1600.5
+  it("CAS 8 — AR saison très haute + prioritaire <48h", () => {
     const r = calculerDevis({
-      nb_passagers: 40,
+      nb_passagers: 53,
       type_deplacement: "aller_retour",
-      distance_km: 200,
+      distance_km: 80,
       date_demande: "2026-05-14",
-      date_depart: "2026-05-15", // écart 1j → prioritaire <48h
+      date_depart: "2026-05-15",
+      date_retour: "2026-05-16",
     });
     expect(r.coefficients.find((c) => c.nom === "anticipation")?.valeur).toBe(1.1);
     expect(r.prix_ht).toBe(1455);
-    expect(r.tva).toBe(145.5);
     expect(r.prix_ttc).toBe(1600.5);
   });
 
-  // ── CAS 8 : ANTICIPATION URGENT 2-7j borne ─────────────────────────────
-  // Test de borne : écart exactement 2 jours ⇒ palier URGENT (jours_min=2 inclus),
-  // PAS prioritaire (qui est jours_max=2 exclu).
-  // 25 pax, AS, 100 km, départ décembre (moyenne 1.00), écart 2j (urgent 1.05).
-  // base = 100 × 2.50 = 250 → plancher 350.00
-  //   × 1.00 = 350 ; × 1.05 = 367.50 ; × 1.00 = 367.50
-  // sous-total HT = 367.50
-  //   × 1.15 = 422.625 → arrondi HT = 423
-  //   TVA = 42.30 ; TTC = 465.30
-  it("CAS 8 — borne anticipation : écart 2j ⇒ urgent (pas prioritaire)", () => {
+  // CAS 9 — capacité +15% (54 pax) : 60km AS, oct(1.0), normal(0.95)
+  // 390 ×1 ×0.95 ×1.15 = 426.075 ; ×1.15 = 489.986 → HT 490 ; TTC 539
+  it("CAS 9 — capacité 54-63 (+15%)", () => {
+    const r = calculerDevis({
+      nb_passagers: 54,
+      type_deplacement: "aller_simple",
+      distance_km: 60,
+      date_demande: "2026-09-20",
+      date_depart: "2026-10-20",
+    });
+    expect(r.prix_ht).toBe(490);
+    expect(r.tva).toBe(49);
+    expect(r.prix_ttc).toBe(539);
+    expect(r.meta.type_vehicule).toBe("autocar_grand_tourisme");
+  });
+
+  // CAS 10 — capacité +20% (65 pax) : 120km AS, juin(1.15), normal(0.95)
+  // 660 ×1.15 ×0.95 ×1.20 = 865.26 ; ×1.15 = 995.049 → HT 995 ; TTC 1094.5
+  it("CAS 10 — capacité 64-67 (+20%) + très haute", () => {
+    const r = calculerDevis({
+      nb_passagers: 65,
+      type_deplacement: "aller_simple",
+      distance_km: 120,
+      date_demande: "2026-05-21",
+      date_depart: "2026-06-20",
+    });
+    expect(r.prix_ht).toBe(995);
+    expect(r.prix_ttc).toBe(1094.5);
+  });
+
+  // CAS 11 — borne anticipation : écart 2j ⇒ urgent (pas prioritaire)
+  // 100km AS, déc(1.0), urgent(1.05). 580 ×1 ×1.05 ×1 = 609 ; ×1.15 = 700.35 → HT 700 ; TTC 770
+  it("CAS 11 — borne anticipation 2j ⇒ urgent", () => {
     const r = calculerDevis({
       nb_passagers: 25,
       type_deplacement: "aller_simple",
       distance_km: 100,
-      date_demande: "2026-12-08",
-      date_depart: "2026-12-10", // écart 2j
+      date_demande: "2026-12-01",
+      date_depart: "2026-12-03",
     });
     expect(r.coefficients.find((c) => c.nom === "anticipation")?.valeur).toBe(1.05);
-    expect(r.prix_ht).toBe(423);
-    expect(r.prix_ttc).toBe(465.3);
+    expect(r.prix_ht).toBe(700);
+    expect(r.prix_ttc).toBe(770);
   });
 
-  // ── CAS 9 : INJECTION DE MATRICES PERSONNALISÉES ───────────────────────
-  // Vérifie que les coeffs sont bien injectables (lookup déterministe externe).
-  // Matrices custom : prix_par_km = 3.00, min = 0, marge = 0.20, TVA = 0.10,
-  // tous coeffs neutres = 1.00.
-  // 30 pax, AS, 100 km : base = 100 × 3 = 300 ; coeffs ×1 = 300
-  //   × 1.20 = 360 → HT 360 ; TVA 36 ; TTC 396.
-  it("CAS 9 — matrices injectées (override déterministe)", () => {
+  // CAS 12 — borne anticipation : écart 90j ⇒ >3mois (0.90)
+  // 100km AS, sept(1.0). 580 ×1 ×0.90 ×1 = 522 ; ×1.15 = 600.3 → HT 600 ; TTC 660
+  it("CAS 12 — borne anticipation 90j ⇒ >3 mois", () => {
+    const r = calculerDevis({
+      nb_passagers: 30,
+      type_deplacement: "aller_simple",
+      distance_km: 100,
+      date_demande: "2026-07-02",
+      date_depart: "2026-09-30",
+    });
+    expect(r.coefficients.find((c) => c.nom === "anticipation")?.valeur).toBe(0.9);
+    expect(r.prix_ht).toBe(600);
+    expect(r.prix_ttc).toBe(660);
+  });
+
+  // CAS 13 — matrices injectées (lookup déterministe externe)
+  // base 300, tous coeffs neutres, marge 20%. 300 ×1.20 = 360 → HT 360 ; TTC 396
+  it("CAS 13 — matrices injectées (override pilotable)", () => {
+    const custom: PricingMatrices = {
+      ...MATRICES_DEFAUT,
+      forfait: [{ km_max: 1000, prix: 300 }],
+      marge: 0.2,
+      saison: { ...MATRICES_DEFAUT.saison, 9: { coeff: 1, libelle: "neutre" } },
+      anticipation: [{ code: "DD_NORMAL", jours_min: 0, jours_max: null, coeff: 1, libelle: "neutre" }],
+      capacite: [{ pax_min: 1, pax_max: 85, coeff: 1, libelle: "neutre", type_vehicule: "autocar_standard" }],
+    };
     const r = calculerDevis(
-      {
-        nb_passagers: 30,
-        type_deplacement: "aller_simple",
-        distance_km: 100,
-        date_demande: "2026-09-01",
-        date_depart: "2026-09-20",
-      },
-      {
-        ...MATRICES_DEFAUT,
-        prix_par_km: 3,
-        prix_minimum: 0,
-        marge: 0.2,
-        saison: { ...MATRICES_DEFAUT.saison, 9: { coeff: 1, libelle: "neutre" } },
-        anticipation: [
-          { code: "DD_NORMAL", jours_min: 0, jours_max: null, coeff: 1, libelle: "neutre" },
-        ],
-        capacite: [
-          { pax_min: 1, pax_max: 85, coeff: 1, libelle: "neutre", type_vehicule: "autocar_standard" },
-        ],
-      }
+      { nb_passagers: 30, type_deplacement: "aller_simple", distance_km: 100, date_demande: "2026-09-01", date_depart: "2026-09-20" },
+      custom
     );
     expect(r.prix_ht).toBe(360);
     expect(r.tva).toBe(36);
@@ -277,130 +228,65 @@ describe("calculerDevis — garde-fous (DevisError)", () => {
   const baseOk: DevisInput = {
     nb_passagers: 30,
     type_deplacement: "aller_simple",
-    distance_km: 150,
-    date_demande: "2026-08-15",
-    date_depart: "2026-09-14",
+    distance_km: 100,
+    date_demande: "2026-08-31",
+    date_depart: "2026-09-30",
   };
-
-  // ── CAS 10 : 0 PASSAGER ⇒ PASSAGERS_INVALIDES ──────────────────────────
-  it("CAS 10 — 0 passager lève PASSAGERS_INVALIDES", () => {
-    expect(() => calculerDevis({ ...baseOk, nb_passagers: 0 })).toThrowError(DevisError);
+  const codeOf = (fn: () => unknown): string => {
     try {
-      calculerDevis({ ...baseOk, nb_passagers: 0 });
-    } catch (e) {
-      expect((e as DevisError).code).toBe("PASSAGERS_INVALIDES");
-    }
-  });
-
-  // ── CAS 11 : PASSAGERS NON ENTIER ──────────────────────────────────────
-  it("CAS 11 — passagers non entier lève PASSAGERS_INVALIDES", () => {
-    try {
-      calculerDevis({ ...baseOk, nb_passagers: 12.5 });
+      fn();
       throw new Error("aurait dû lever");
     } catch (e) {
       expect(e).toBeInstanceOf(DevisError);
-      expect((e as DevisError).code).toBe("PASSAGERS_INVALIDES");
+      return (e as DevisError).code;
     }
-  });
+  };
 
-  // ── CAS 12 : >85 PASSAGERS ⇒ CAPACITE_DEPASSEE (cas complexe) ───────────
-  it("CAS 12 — 90 passagers lève CAPACITE_DEPASSEE", () => {
-    try {
-      calculerDevis({ ...baseOk, nb_passagers: 90 });
-      throw new Error("aurait dû lever");
-    } catch (e) {
-      expect((e as DevisError).code).toBe("CAPACITE_DEPASSEE");
-      expect((e as DevisError).details?.plafond).toBe(85);
-    }
+  it("CAS 14 — 0 passager ⇒ PASSAGERS_INVALIDES", () => {
+    expect(codeOf(() => calculerDevis({ ...baseOk, nb_passagers: 0 }))).toBe("PASSAGERS_INVALIDES");
   });
-
-  // ── CAS 13 : RETOUR < DÉPART ⇒ DATES_INCOHERENTES ──────────────────────
-  it("CAS 13 — date de retour avant départ lève DATES_INCOHERENTES", () => {
-    try {
-      calculerDevis({
-        ...baseOk,
-        type_deplacement: "aller_retour",
-        date_depart: "2026-09-14",
-        date_retour: "2026-09-10",
-      });
-      throw new Error("aurait dû lever");
-    } catch (e) {
-      expect((e as DevisError).code).toBe("DATES_INCOHERENTES");
-    }
+  it("CAS 15 — passager non entier ⇒ PASSAGERS_INVALIDES", () => {
+    expect(codeOf(() => calculerDevis({ ...baseOk, nb_passagers: 12.5 }))).toBe("PASSAGERS_INVALIDES");
   });
-
-  // ── CAS 14 : DÉPART < DEMANDE (date passée) ⇒ DATE_PASSEE ───────────────
-  it("CAS 14 — date de départ antérieure à la demande lève DATE_PASSEE", () => {
-    try {
-      calculerDevis({ ...baseOk, date_demande: "2026-09-14", date_depart: "2026-08-15" });
-      throw new Error("aurait dû lever");
-    } catch (e) {
-      expect((e as DevisError).code).toBe("DATE_PASSEE");
-    }
+  it("CAS 16 — > 85 passagers ⇒ CAPACITE_DEPASSEE (flux manuel)", () => {
+    expect(codeOf(() => calculerDevis({ ...baseOk, nb_passagers: 90 }))).toBe("CAPACITE_DEPASSEE");
   });
-
-  // ── CAS 15 : DISTANCE MANQUANTE ⇒ DISTANCE_INVALIDE ────────────────────
-  it("CAS 15 — distance absente lève DISTANCE_INVALIDE", () => {
-    try {
-      calculerDevis({ ...baseOk, distance_km: undefined });
-      throw new Error("aurait dû lever");
-    } catch (e) {
-      expect((e as DevisError).code).toBe("DISTANCE_INVALIDE");
-    }
+  it("CAS 17 — retour < départ ⇒ DATES_INCOHERENTES", () => {
+    expect(
+      codeOf(() => calculerDevis({ ...baseOk, type_deplacement: "aller_retour", date_retour: "2026-09-20" }))
+    ).toBe("DATES_INCOHERENTES");
   });
-
-  // ── CAS 16 : HORS ZONE (distance > rayon max) ⇒ HORS_ZONE ──────────────
-  // rayon_max_km défaut = 1500. AR 800 km ⇒ facturée 1600 > 1500.
-  it("CAS 16 — distance hors zone lève HORS_ZONE", () => {
-    try {
-      calculerDevis({ ...baseOk, type_deplacement: "aller_retour", distance_km: 800 });
-      throw new Error("aurait dû lever");
-    } catch (e) {
-      expect((e as DevisError).code).toBe("HORS_ZONE");
-    }
+  it("CAS 18 — départ < demande ⇒ DATE_PASSEE", () => {
+    expect(codeOf(() => calculerDevis({ ...baseOk, date_demande: "2026-09-30", date_depart: "2026-08-15" }))).toBe(
+      "DATE_PASSEE"
+    );
   });
-
-  // ── CAS 17 : DATE NON PARSABLE ⇒ DATES_INVALIDES ───────────────────────
-  it("CAS 17 — date non parsable lève DATES_INVALIDES", () => {
-    try {
-      calculerDevis({ ...baseOk, date_depart: "pas-une-date" });
-      throw new Error("aurait dû lever");
-    } catch (e) {
-      expect((e as DevisError).code).toBe("DATES_INVALIDES");
-    }
+  it("CAS 19 — distance absente ⇒ DISTANCE_INVALIDE", () => {
+    expect(codeOf(() => calculerDevis({ ...baseOk, distance_km: undefined }))).toBe("DISTANCE_INVALIDE");
   });
-
-  // ── CAS 18 : CIRCUIT SANS ÉTAPES VALIDES ⇒ DISTANCE_INVALIDE ────────────
-  it("CAS 18 — circuit avec étape ≤ 0 lève DISTANCE_INVALIDE", () => {
-    try {
-      calculerDevis({ ...baseOk, type_deplacement: "circuit", etapes_km: [120, 0, 80] });
-      throw new Error("aurait dû lever");
-    } catch (e) {
-      expect((e as DevisError).code).toBe("DISTANCE_INVALIDE");
-    }
+  it("CAS 20 — date non parsable ⇒ DATES_INVALIDES", () => {
+    expect(codeOf(() => calculerDevis({ ...baseOk, date_depart: "pas-une-date" }))).toBe("DATES_INVALIDES");
+  });
+  it("CAS 21 — circuit ⇒ CALCUL_MANUEL (flux commercial)", () => {
+    expect(codeOf(() => calculerDevis({ ...baseOk, type_deplacement: "circuit" }))).toBe("CALCUL_MANUEL");
   });
 });
 
 describe("calculerDevis — invariants d'audit", () => {
-  // ── CAS 19 : cohérence interne lignes / coefficients ───────────────────
-  it("CAS 19 — TTC = HT + TVA et coefficients tous présents", () => {
+  it("CAS 22 — TTC = HT + TVA ; coefficients présents ; dernière ligne = TTC", () => {
     const r = calculerDevis({
-      nb_passagers: 21,
+      nb_passagers: 40,
       type_deplacement: "aller_retour",
-      distance_km: 260,
-      date_demande: "2025-12-01",
-      date_depart: "2026-03-15",
+      distance_km: 120,
+      date_demande: "2026-01-01",
+      date_depart: "2026-04-15",
+      date_retour: "2026-04-16",
     });
-    expect(round2(r.prix_ht + r.tva)).toBe(r.prix_ttc);
+    expect(Math.round((r.prix_ht + r.tva) * 100) / 100).toBe(r.prix_ttc);
     for (const nom of ["saison", "anticipation", "capacite", "marge", "tva"]) {
       expect(r.coefficients.some((c) => c.nom === nom)).toBe(true);
     }
-    // La dernière ligne est toujours le TTC.
     expect(r.lignes[r.lignes.length - 1].libelle).toBe("Prix TTC");
     expect(r.lignes[r.lignes.length - 1].montant).toBe(r.prix_ttc);
   });
 });
-
-function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
-}

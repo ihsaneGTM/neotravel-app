@@ -491,10 +491,33 @@ create index idx_logs_type_event          on logs (type_event);
 -- Coefficients = facteur multiplicatif (1.10 = +10%, 0.93 = -7%).
 -- Montants     = EUR unitaires (base, options).
 
--- --- 6.1 Base distance + minimum ---
-insert into matrices (categorie, cle, libelle, valeur, unite) values
-  ('base', 'prix_par_km',  'Prix au kilomètre',        2.50,  'eur_par_km'),
-  ('base', 'prix_minimum', 'Prix plancher de course',  350.00,'eur');
+-- --- 6.1 Grille forfait TRANSFERT SIMPLE (≤ 180 km) ---
+-- Règle officielle : prix forfait par tranche de 10 km. AR = simple × 2.
+-- Lookup : première tranche dont borne_max >= distance_aller.
+insert into matrices (categorie, cle, libelle, valeur, unite, borne_max) values
+  ('forfait', 'tr_010', 'Forfait <= 10 km',  250.00, 'eur', 10),
+  ('forfait', 'tr_020', 'Forfait <= 20 km',  250.00, 'eur', 20),
+  ('forfait', 'tr_030', 'Forfait <= 30 km',  250.00, 'eur', 30),
+  ('forfait', 'tr_040', 'Forfait <= 40 km',  320.00, 'eur', 40),
+  ('forfait', 'tr_050', 'Forfait <= 50 km',  350.00, 'eur', 50),
+  ('forfait', 'tr_060', 'Forfait <= 60 km',  390.00, 'eur', 60),
+  ('forfait', 'tr_070', 'Forfait <= 70 km',  430.00, 'eur', 70),
+  ('forfait', 'tr_080', 'Forfait <= 80 km',  500.00, 'eur', 80),
+  ('forfait', 'tr_090', 'Forfait <= 90 km',  540.00, 'eur', 90),
+  ('forfait', 'tr_100', 'Forfait <= 100 km', 580.00, 'eur', 100),
+  ('forfait', 'tr_110', 'Forfait <= 110 km', 620.00, 'eur', 110),
+  ('forfait', 'tr_120', 'Forfait <= 120 km', 660.00, 'eur', 120),
+  ('forfait', 'tr_130', 'Forfait <= 130 km', 700.00, 'eur', 130),
+  ('forfait', 'tr_140', 'Forfait <= 140 km', 740.00, 'eur', 140),
+  ('forfait', 'tr_150', 'Forfait <= 150 km', 780.00, 'eur', 150),
+  ('forfait', 'tr_160', 'Forfait <= 160 km', 820.00, 'eur', 160),
+  ('forfait', 'tr_170', 'Forfait <= 170 km', 860.00, 'eur', 170),
+  ('forfait', 'tr_180', 'Forfait <= 180 km', 900.00, 'eur', 180);
+
+-- --- 6.1b Au-delà de 180 km : (km_aller × 2) × 2,5 €/km ---
+insert into matrices (categorie, cle, libelle, valeur, unite, borne_min) values
+  ('base', 'seuil_grille_km', 'Seuil grille -> formule',           180.00, 'km',         180),
+  ('base', 'prix_km_au_dela', 'Prix/km au-dela de 180 km (km x 2)', 2.50,  'eur_par_km', 180);
 
 -- --- 6.2 Saison (selon mois de date_depart) ---
 -- basse: nov, jan, fev, aout (-7%) ; moyenne: dec, oct, sep (0%) ;
@@ -521,11 +544,9 @@ insert into matrices (categorie, cle, libelle, valeur, unite, borne_min, borne_m
   ('capacite', 'cap_xl',      '63-67 passagers',  1.20, 'pct', 63, 67),
   ('capacite', 'cap_double',  '67-85 passagers',  1.40, 'pct', 67, 85);
 
--- --- 6.5 Options (additif EUR) ---
-insert into matrices (categorie, cle, libelle, valeur, unite) values
-  ('option', 'guide',          'Guide / accompagnateur', 80.00,  'eur_par_jour'),
-  ('option', 'nuit_chauffeur', 'Nuit chauffeur',         120.00, 'eur_par_nuit'),
-  ('option', 'peages',         'Péages (forfait trajet)', 0.00,  'eur');  -- forfait paramétré par trajet
+-- --- 6.5 Options : NON tarifées par les règles officielles ---
+-- Les règles de cotation ne définissent pas d'options (guide, nuit chauffeur…).
+-- Toute demande spéciale relève du flux manuel commercial (escalade).
 
 -- --- 6.6 TVA & marge ---
 insert into matrices (categorie, cle, libelle, valeur, unite) values

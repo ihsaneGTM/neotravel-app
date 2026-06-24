@@ -1,23 +1,24 @@
 /**
  * NeoTravel — Moteur de devis déterministe.
  *
+ * SOURCE DE VÉRITÉ : « REGLES DE CALCUL COTATION DEVIS NEOTRAVEL ».
  * RÈGLE D'OR : ce module NE FAIT AUCUN appel LLM. Le prix vient TOUJOURS d'ici.
- * L'IA décide / met en forme ; le code calcule.
  *
  * Chaîne de calcul (ORDRE imposé) :
- *   base distance (× 2 si AR, somme des étapes si circuit)
- *   → × coeff saison (selon mois de date_depart)
- *   → × coeff anticipation (selon écart date_demande → date_depart)
- *   → × coeff capacité (selon nb_passagers)
- *   → + options (additif : guide, nuit chauffeur, péages…)
- *   → sous-total HT
- *   → + marge commerciale 15 % (avant TVA)
- *   → arrondi à l'euro
- *   → + TVA 10 %
- *   → TTC
+ *   1. BASE
+ *      - Transfert simple (aller) :
+ *          • ≤ 180 km → grille forfait par tranche de 10 km (≤30 km = 250 €).
+ *          • > 180 km → (km × 2) × 2,5 € (km parcourus aller + retour à vide).
+ *      - Aller/retour → transfert simple × 2.
+ *      - Circuit → non tarifé automatiquement (flux manuel commercial).
+ *   2. × coeff saison (mois de date_depart)
+ *   3. × coeff anticipation (écart date_demande → date_depart)
+ *   4. × coeff capacité (nb_passagers ; > 85 ⇒ flux manuel)
+ *   5. × marge commerciale (+15 %)  → arrondi HT à l'euro
+ *   6. + TVA 10 % (transport de voyageurs)  → TTC
  *
- * Chaque ligne (`lignes[]`) et chaque coefficient (`coefficients[]`) est tracé
- * pour que le commercial puisse expliquer le devis (audit).
+ * Tout est paramétrable (matrices injectables) — « doivent être pilotables ».
+ * Chaque ligne (`lignes[]`) et coefficient (`coefficients[]`) est tracé (audit).
  */
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -25,57 +26,33 @@
 // ──────────────────────────────────────────────────────────────────────────
 
 export type TypeDeplacement = "aller_simple" | "aller_retour" | "circuit";
-
-/** Catalogue d'options additives (montant fixe ou par jour/nuit). */
-export type OptionDevis =
-  | { type: "guide" } //               +X € / jour de prestation
-  | { type: "nuit_chauffeur" } //      +X € / nuit
-  | { type: "peages"; trajet?: string }; // forfait selon trajet
+export type TypeVehicule = "minibus" | "autocar_standard" | "autocar_grand_tourisme";
 
 export interface DevisInput {
-  /** Nombre de passagers (entier strictement positif). */
+  /** Nombre de passagers (entier strictement positif ; > 85 ⇒ flux manuel). */
   nb_passagers: number;
-  /** Date de départ (ISO `YYYY-MM-DD` ou objet Date). */
+  /** Date de départ (ISO `YYYY-MM-DD` ou Date). */
   date_depart: string | Date;
-  /** Date d'émission de la demande (ISO `YYYY-MM-DD` ou objet Date). */
+  /** Date d'émission de la demande (ISO `YYYY-MM-DD` ou Date). */
   date_demande: string | Date;
-  /** Type de déplacement ; par défaut `aller_simple`. */
+  /** Type de déplacement ; défaut `aller_simple`. */
   type_deplacement?: TypeDeplacement;
-  /**
-   * Distance en km.
-   * - aller_simple / aller_retour : distance d'un aller (l'AR double en interne).
-   * - circuit : facultatif si `etapes_km` est fourni (sinon distance totale).
-   */
+  /** Distance d'un aller, en km (la grille / formule s'applique à cet aller). */
   distance_km?: number;
-  /** Circuit : distances de chaque étape en km (sommées pour la base). */
-  etapes_km?: number[];
-  /** Date de retour (circuit / AR) — sert à déduire nb_jours et nuitées. */
+  /** Date de retour (AR) — sert au contrôle de cohérence. */
   date_retour?: string | Date;
-  /**
-   * Nombre de jours de prestation (déduit des dates si absent).
-   * Sert au coût du guide (par jour) et au plafond de nuits chauffeur.
-   */
-  nb_jours?: number;
-  /**
-   * Nombre de nuitées (déduit des dates si absent ; = nb_jours - 1, min 0).
-   * Sert au coût « nuit chauffeur ».
-   */
-  nuitees?: number;
-  /** Options additives. */
-  options?: OptionDevis[];
 }
 
 export interface LigneDevis {
   libelle: string;
-  /** Montant HT en euros (peut être négatif pour une remise). */
+  /** Montant HT en euros (peut être négatif : remise saison/anticipation/capacité). */
   montant: number;
 }
 
 export interface CoefficientDevis {
   nom: string;
-  /** Valeur multiplicative appliquée (ex 1.10 pour +10 %). */
+  /** Valeur multiplicative appliquée (ex 1.10 = +10 %). */
   valeur: number;
-  /** Étiquette lisible (ex « haute (+10%) »). */
   detail?: string;
 }
 
@@ -86,28 +63,26 @@ export interface DevisResult {
   lignes: LigneDevis[];
   coefficients: CoefficientDevis[];
   devise: "EUR";
-  /** Métadonnées d'audit utiles au commercial / dashboard. */
   meta: {
     type_deplacement: TypeDeplacement;
-    nb_jours: number;
-    nuitees: number;
     type_vehicule: TypeVehicule;
-    distance_facturee_km: number;
+    distance_km: number;
+    base_ht: number;
   };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Erreur structurée
+// Erreur structurée (garde-fous métier)
 // ──────────────────────────────────────────────────────────────────────────
 
 export type DevisErrorCode =
   | "PASSAGERS_INVALIDES" //   nb_passagers <= 0 ou non entier
-  | "DATES_INVALIDES" //       date non parsable
-  | "DATES_INCOHERENTES" //    retour < départ, ou départ < demande
-  | "DATE_PASSEE" //           date_depart strictement avant date_demande
+  | "CAPACITE_DEPASSEE" //     > 85 passagers ⇒ multi-véhicules / flux manuel
+  | "DATES_INVALIDES" //       date non parsable / mois inconnu
+  | "DATES_INCOHERENTES" //    retour < départ
+  | "DATE_PASSEE" //           départ < demande
   | "DISTANCE_INVALIDE" //     distance manquante / <= 0
-  | "CAPACITE_DEPASSEE" //     > 85 passagers ⇒ multi-véhicules (cas complexe)
-  | "HORS_ZONE"; //            distance au-delà du rayon d'exploitation
+  | "CALCUL_MANUEL"; //        circuit ⇒ non tarifé automatiquement (commercial)
 
 export class DevisError extends Error {
   readonly code: DevisErrorCode;
@@ -117,71 +92,72 @@ export class DevisError extends Error {
     this.name = "DevisError";
     this.code = code;
     this.details = details;
-    // Conserve la chaîne de prototype après transpilation TS → ES5.
     Object.setPrototypeOf(this, DevisError.prototype);
   }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Matrices de coefficients (injectables — voir note sur la représentation)
+// Matrices (injectables — table Supabase `matrices` en production)
 // ──────────────────────────────────────────────────────────────────────────
 
-export type TypeVehicule = "minibus" | "autocar_standard" | "autocar_grand_tourisme";
-
 export interface PricingMatrices {
-  /** Base distance. */
-  prix_par_km: number; //  ex 2.50 €/km
-  prix_minimum: number; // ex 350 € (plancher de la base avant coefficients)
-  /** Rayon d'exploitation max en km (au-delà ⇒ HORS_ZONE). null = pas de limite. */
-  rayon_max_km: number | null;
-  /** Coefficient saison par mois (clé = mois 1..12). Valeur multiplicative. */
+  /** Grille forfait transfert simple : tranches `km_max` croissantes (≤ 180). */
+  forfait: Array<{ km_max: number; prix: number }>;
+  /** Seuil de bascule grille → formule (180 km). */
+  seuil_grille_km: number;
+  /** Au-delà du seuil : (km × 2) × prix_km_au_dela. */
+  prix_km_au_dela: number;
+  /** Coefficient saison par mois (1..12). */
   saison: Record<number, { coeff: number; libelle: string }>;
   /** Paliers d'anticipation, du plus urgent au plus lointain (premier match). */
   anticipation: Array<{
     code: "DD_PRIORITAIRE" | "DD_URGENT" | "DD_NORMAL" | "DD_3MOISETPLUS";
-    /** Borne basse incluse, en jours (écart date_demande → date_depart). */
-    jours_min: number;
-    /** Borne haute exclue, en jours ; null = +∞. */
-    jours_max: number | null;
+    jours_min: number; // borne basse incluse (écart date_demande → date_depart)
+    jours_max: number | null; // borne haute exclue ; null = +∞
     coeff: number;
     libelle: string;
   }>;
   /** Paliers de capacité, du plus petit au plus grand (premier match). */
   capacite: Array<{
-    /** Borne basse incluse. */
-    pax_min: number;
-    /** Borne haute incluse ; null = +∞. */
-    pax_max: number | null;
+    pax_min: number; // borne basse incluse
+    pax_max: number | null; // borne haute incluse
     coeff: number;
     libelle: string;
     type_vehicule: TypeVehicule;
   }>;
-  /** Plafond passagers mono-véhicule (au-delà ⇒ CAPACITE_DEPASSEE). */
-  capacite_max_mono_vehicule: number; // 85
-  /** Tarifs des options. */
-  options: {
-    guide_par_jour: number; //          80 €
-    nuit_chauffeur_par_nuit: number; // 120 €
-    /** Forfait péages par défaut si non précisé via une table trajet. */
-    peages_forfait_defaut: number;
-  };
-  /** Marge commerciale appliquée AVANT la TVA (ex 0.15). */
+  /** Plafond passagers mono-flux (au-delà ⇒ CAPACITE_DEPASSEE / flux manuel). */
+  capacite_max: number; // 85
+  /** Marge commerciale appliquée AVANT la TVA (0.15 = +15 %). */
   marge: number;
-  /** Taux de TVA (ex 0.10). */
+  /** Taux de TVA (0.10 = 10 %). */
   tva: number;
 }
 
-/**
- * Matrices par défaut, calibrées sur le devis de référence
- * (1628 € TTC — 21 pax, AR 260 km, saison haute, anticipation > 90 j).
- *
- * En production, ces valeurs sont lues depuis la table Supabase `matrices`
- * (lookup déterministe) et injectées via le 2ᵉ argument de `calculerDevis`.
- */
+/** Matrices par défaut — strictement conformes aux règles officielles NeoTravel. */
 export const MATRICES_DEFAUT: PricingMatrices = {
-  prix_par_km: 2.5,
-  prix_minimum: 350,
-  rayon_max_km: 1500,
+  // Grille forfait transfert simple jusqu'à 180 km (≤30 km = 250 € plancher).
+  forfait: [
+    { km_max: 10, prix: 250 },
+    { km_max: 20, prix: 250 },
+    { km_max: 30, prix: 250 },
+    { km_max: 40, prix: 320 },
+    { km_max: 50, prix: 350 },
+    { km_max: 60, prix: 390 },
+    { km_max: 70, prix: 430 },
+    { km_max: 80, prix: 500 },
+    { km_max: 90, prix: 540 },
+    { km_max: 100, prix: 580 },
+    { km_max: 110, prix: 620 },
+    { km_max: 120, prix: 660 },
+    { km_max: 130, prix: 700 },
+    { km_max: 140, prix: 740 },
+    { km_max: 150, prix: 780 },
+    { km_max: 160, prix: 820 },
+    { km_max: 170, prix: 860 },
+    { km_max: 180, prix: 900 },
+  ],
+  seuil_grille_km: 180,
+  prix_km_au_dela: 2.5,
   saison: {
     1: { coeff: 0.93, libelle: "basse" }, //   janvier
     2: { coeff: 0.93, libelle: "basse" }, //   février
@@ -196,6 +172,7 @@ export const MATRICES_DEFAUT: PricingMatrices = {
     11: { coeff: 0.93, libelle: "basse" }, //  novembre
     12: { coeff: 1.0, libelle: "moyenne" }, // décembre
   },
+  // Seuils en jours non fournis par le doc (« pilotables ») — interprétation retenue.
   anticipation: [
     { code: "DD_PRIORITAIRE", jours_min: 0, jours_max: 2, coeff: 1.1, libelle: "prioritaire (<48h)" },
     { code: "DD_URGENT", jours_min: 2, jours_max: 7, coeff: 1.05, libelle: "urgent (2-7j)" },
@@ -209,12 +186,7 @@ export const MATRICES_DEFAUT: PricingMatrices = {
     { pax_min: 64, pax_max: 67, coeff: 1.2, libelle: "64-67 (+20%)", type_vehicule: "autocar_grand_tourisme" },
     { pax_min: 68, pax_max: 85, coeff: 1.4, libelle: "68-85 (+40%)", type_vehicule: "autocar_grand_tourisme" },
   ],
-  capacite_max_mono_vehicule: 85,
-  options: {
-    guide_par_jour: 80,
-    nuit_chauffeur_par_nuit: 120,
-    peages_forfait_defaut: 0,
-  },
+  capacite_max: 85,
   marge: 0.15,
   tva: 0.1,
 };
@@ -223,60 +195,74 @@ export const MATRICES_DEFAUT: PricingMatrices = {
 // Helpers
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Parse une date ISO/Date en minuit UTC, ou lève DATES_INVALIDES. */
 function parseDate(value: string | Date, champ: string): Date {
   const d = value instanceof Date ? new Date(value.getTime()) : new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) {
-    throw new DevisError("DATES_INVALIDES", `Date invalide pour le champ « ${champ} » : ${String(value)}`, {
-      champ,
-      valeur: value,
-    });
+    throw new DevisError("DATES_INVALIDES", `Date invalide pour « ${champ} » : ${String(value)}`, { champ, valeur: value });
   }
-  // Normalise à minuit UTC pour des écarts en jours stables (pas d'effet fuseau).
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
-/** Nombre de jours calendaires entre deux dates (b - a). */
 function diffJours(a: Date, b: Date): number {
-  const MS_JOUR = 24 * 60 * 60 * 1000;
-  return Math.round((b.getTime() - a.getTime()) / MS_JOUR);
+  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
 
-/** Arrondi à 2 décimales (centimes) pour TVA / TTC. */
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function pct(coeff: number): string {
+  const delta = Math.round((coeff - 1) * 100);
+  return delta === 0 ? "0%" : `${delta > 0 ? "+" : ""}${delta}%`;
+}
+
+/** Prix de base d'un transfert simple (aller) selon grille / formule. */
+function transfertSimple(distance_km: number, m: PricingMatrices): { base: number; libelle: string } {
+  if (distance_km <= m.seuil_grille_km) {
+    const row = m.forfait.find((r) => distance_km <= r.km_max);
+    if (!row) {
+      throw new DevisError("DISTANCE_INVALIDE", `Pas de tranche forfait pour ${distance_km} km.`, { distance_km });
+    }
+    return { base: row.prix, libelle: `Forfait transfert simple — ≤ ${row.km_max} km` };
+  }
+  const base = distance_km * 2 * m.prix_km_au_dela;
+  return {
+    base,
+    libelle: `Transfert simple > ${m.seuil_grille_km} km — (${distance_km} × 2) × ${m.prix_km_au_dela} €/km`,
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
 // Moteur
 // ──────────────────────────────────────────────────────────────────────────
 
-/**
- * Calcule un devis déterministe.
- *
- * @param input  Données collectées (conversation IA + déductions).
- * @param matrices  Coefficients (par défaut : MATRICES_DEFAUT). Injectables
- *                  depuis la table Supabase `matrices` en production.
- * @throws {DevisError}  Pour tout cas non chiffrable (garde-fous métier).
- */
 export function calculerDevis(input: DevisInput, matrices: PricingMatrices = MATRICES_DEFAUT): DevisResult {
   const type_deplacement: TypeDeplacement = input.type_deplacement ?? "aller_simple";
 
-  // ── 1. Validation passagers ───────────────────────────────────────────
+  // ── 1. Circuit ⇒ flux manuel (non couvert par les règles de cotation auto) ──
+  if (type_deplacement === "circuit") {
+    throw new DevisError(
+      "CALCUL_MANUEL",
+      "Un circuit (multi-étapes) n'est pas tarifé automatiquement : transfert vers un commercial.",
+      { type_deplacement }
+    );
+  }
+
+  // ── 2. Validation passagers ─────────────────────────────────────────────
   if (!Number.isInteger(input.nb_passagers) || input.nb_passagers <= 0) {
     throw new DevisError("PASSAGERS_INVALIDES", "Le nombre de passagers doit être un entier strictement positif.", {
       nb_passagers: input.nb_passagers,
     });
   }
-  if (input.nb_passagers > matrices.capacite_max_mono_vehicule) {
+  if (input.nb_passagers > matrices.capacite_max) {
     throw new DevisError(
       "CAPACITE_DEPASSEE",
-      `${input.nb_passagers} passagers > ${matrices.capacite_max_mono_vehicule} : multi-véhicules ⇒ cas complexe, pas de devis automatique.`,
-      { nb_passagers: input.nb_passagers, plafond: matrices.capacite_max_mono_vehicule }
+      `${input.nb_passagers} passagers > ${matrices.capacite_max} : multi-véhicules ⇒ flux manuel commercial.`,
+      { nb_passagers: input.nb_passagers, plafond: matrices.capacite_max }
     );
   }
 
-  // ── 2. Validation dates ────────────────────────────────────────────────
+  // ── 3. Validation dates ─────────────────────────────────────────────────
   const dDemande = parseDate(input.date_demande, "date_demande");
   const dDepart = parseDate(input.date_depart, "date_depart");
   if (dDepart < dDemande) {
@@ -285,9 +271,8 @@ export function calculerDevis(input: DevisInput, matrices: PricingMatrices = MAT
       date_depart: input.date_depart,
     });
   }
-  let dRetour: Date | null = null;
   if (input.date_retour != null) {
-    dRetour = parseDate(input.date_retour, "date_retour");
+    const dRetour = parseDate(input.date_retour, "date_retour");
     if (dRetour < dDepart) {
       throw new DevisError("DATES_INCOHERENTES", "La date de retour est antérieure à la date de départ.", {
         date_depart: input.date_depart,
@@ -296,157 +281,63 @@ export function calculerDevis(input: DevisInput, matrices: PricingMatrices = MAT
     }
   }
 
-  // ── 3. Déductions durée / nuitées ──────────────────────────────────────
-  // nb_jours : priorité à l'input, sinon déduit des dates (min 1 jour).
-  let nb_jours = input.nb_jours ?? (dRetour ? diffJours(dDepart, dRetour) + 1 : 1);
-  if (nb_jours < 1) nb_jours = 1;
-  // nuitees : priorité à l'input, sinon nb_jours - 1 (jamais négatif).
-  const nuitees = input.nuitees ?? Math.max(0, nb_jours - 1);
+  // ── 4. Validation distance ──────────────────────────────────────────────
+  const distance = input.distance_km;
+  if (distance == null || !(distance > 0)) {
+    throw new DevisError("DISTANCE_INVALIDE", "Distance manquante ou invalide.", { distance_km: input.distance_km });
+  }
 
-  // ── 4. Base distance ───────────────────────────────────────────────────
+  // ── 5. Base (transfert simple, × 2 si aller/retour) ─────────────────────
   const lignes: LigneDevis[] = [];
-  let distance_facturee_km: number;
-  let base: number;
+  const ts = transfertSimple(distance, matrices);
+  const base = type_deplacement === "aller_retour" ? ts.base * 2 : ts.base;
+  lignes.push({
+    libelle: type_deplacement === "aller_retour" ? `${ts.libelle} × 2 (aller/retour)` : ts.libelle,
+    montant: round2(base),
+  });
 
-  if (type_deplacement === "circuit") {
-    const etapes = input.etapes_km ?? (input.distance_km != null ? [input.distance_km] : undefined);
-    if (!etapes || etapes.length === 0 || etapes.some((k) => !(k > 0))) {
-      throw new DevisError("DISTANCE_INVALIDE", "Circuit : fournir des distances d'étapes strictement positives.", {
-        etapes_km: input.etapes_km,
-        distance_km: input.distance_km,
-      });
-    }
-    distance_facturee_km = etapes.reduce((s, k) => s + k, 0);
-    const baseBrute = distance_facturee_km * matrices.prix_par_km;
-    base = Math.max(baseBrute, matrices.prix_minimum);
-    lignes.push({
-      libelle: `Base circuit ${etapes.length} étape(s) — ${distance_facturee_km} km × ${matrices.prix_par_km} €/km${
-        base > baseBrute ? ` (plancher ${matrices.prix_minimum} €)` : ""
-      }`,
-      montant: base,
-    });
-  } else {
-    const aller = input.distance_km;
-    if (aller == null || !(aller > 0)) {
-      throw new DevisError("DISTANCE_INVALIDE", "Distance manquante ou invalide.", { distance_km: input.distance_km });
-    }
-    const facteurAR = type_deplacement === "aller_retour" ? 2 : 1;
-    distance_facturee_km = aller * facteurAR;
-    const baseBrute = aller * matrices.prix_par_km * facteurAR;
-    base = Math.max(baseBrute, matrices.prix_minimum);
-    lignes.push({
-      libelle: `Base ${type_deplacement === "aller_retour" ? "aller-retour" : "aller simple"} — ${aller} km${
-        facteurAR === 2 ? " × 2" : ""
-      } × ${matrices.prix_par_km} €/km${base > baseBrute ? ` (plancher ${matrices.prix_minimum} €)` : ""}`,
-      montant: base,
-    });
-  }
-
-  // Garde-fou zone d'exploitation (sur la distance facturée).
-  if (matrices.rayon_max_km != null && distance_facturee_km > matrices.rayon_max_km) {
-    throw new DevisError(
-      "HORS_ZONE",
-      `Distance ${distance_facturee_km} km au-delà du rayon d'exploitation (${matrices.rayon_max_km} km).`,
-      { distance_facturee_km, rayon_max_km: matrices.rayon_max_km }
-    );
-  }
-
-  // ── 5. Coefficients multiplicatifs (saison → anticipation → capacité) ──
+  // ── 6. Coefficients multiplicatifs (saison → anticipation → capacité) ────
   const coefficients: CoefficientDevis[] = [];
   let courant = base;
 
-  // 5a. Saison (mois de date_depart, 1..12).
   const mois = dDepart.getUTCMonth() + 1;
   const sa = matrices.saison[mois];
-  if (!sa) {
-    throw new DevisError("DATES_INVALIDES", `Aucun coefficient saison pour le mois ${mois}.`, { mois });
-  }
+  if (!sa) throw new DevisError("DATES_INVALIDES", `Aucun coefficient saison pour le mois ${mois}.`, { mois });
   coefficients.push({ nom: "saison", valeur: sa.coeff, detail: `${sa.libelle} (${pct(sa.coeff)})` });
   const apresSaison = courant * sa.coeff;
   lignes.push({ libelle: `Saison ${sa.libelle} (${pct(sa.coeff)})`, montant: round2(apresSaison - courant) });
   courant = apresSaison;
 
-  // 5b. Anticipation (écart date_demande → date_depart, premier palier match).
   const ecart = diffJours(dDemande, dDepart);
-  const an = matrices.anticipation.find(
-    (p) => ecart >= p.jours_min && (p.jours_max == null || ecart < p.jours_max)
-  );
-  if (!an) {
-    throw new DevisError("DATES_INCOHERENTES", `Aucun palier d'anticipation pour un écart de ${ecart} jours.`, {
-      ecart,
-    });
-  }
+  const an = matrices.anticipation.find((p) => ecart >= p.jours_min && (p.jours_max == null || ecart < p.jours_max));
+  if (!an) throw new DevisError("DATES_INCOHERENTES", `Aucun palier d'anticipation pour un écart de ${ecart} jours.`, { ecart });
   coefficients.push({ nom: "anticipation", valeur: an.coeff, detail: `${an.libelle} (${pct(an.coeff)})` });
   const apresAntic = courant * an.coeff;
   lignes.push({ libelle: `Anticipation ${an.libelle} (${pct(an.coeff)})`, montant: round2(apresAntic - courant) });
   courant = apresAntic;
 
-  // 5c. Capacité (nb_passagers, premier palier match).
   const cap = matrices.capacite.find(
     (p) => input.nb_passagers >= p.pax_min && (p.pax_max == null || input.nb_passagers <= p.pax_max)
   );
-  if (!cap) {
-    throw new DevisError("CAPACITE_DEPASSEE", `Aucun palier de capacité pour ${input.nb_passagers} passagers.`, {
-      nb_passagers: input.nb_passagers,
-    });
-  }
-  coefficients.push({ nom: "capacite", valeur: cap.coeff, detail: `${cap.libelle}` });
+  if (!cap) throw new DevisError("CAPACITE_DEPASSEE", `Aucun palier de capacité pour ${input.nb_passagers} passagers.`, { nb_passagers: input.nb_passagers });
+  coefficients.push({ nom: "capacite", valeur: cap.coeff, detail: cap.libelle });
   const apresCap = courant * cap.coeff;
   lignes.push({ libelle: `Capacité ${cap.libelle}`, montant: round2(apresCap - courant) });
   courant = apresCap;
 
-  const type_vehicule = cap.type_vehicule;
-
-  // ── 6. Options (additif) ───────────────────────────────────────────────
-  for (const opt of input.options ?? []) {
-    switch (opt.type) {
-      case "guide": {
-        const montant = matrices.options.guide_par_jour * nb_jours;
-        courant += montant;
-        lignes.push({
-          libelle: `Option guide/accompagnateur — ${matrices.options.guide_par_jour} €/jour × ${nb_jours} j`,
-          montant,
-        });
-        break;
-      }
-      case "nuit_chauffeur": {
-        const montant = matrices.options.nuit_chauffeur_par_nuit * nuitees;
-        courant += montant;
-        lignes.push({
-          libelle: `Option nuit chauffeur — ${matrices.options.nuit_chauffeur_par_nuit} €/nuit × ${nuitees} nuit(s)`,
-          montant,
-        });
-        break;
-      }
-      case "peages": {
-        const montant = matrices.options.peages_forfait_defaut;
-        if (montant > 0) {
-          courant += montant;
-          lignes.push({
-            libelle: `Option péages${opt.trajet ? ` (${opt.trajet})` : ""} — forfait`,
-            montant,
-          });
-        }
-        break;
-      }
-    }
-  }
-
-  // ── 7. Sous-total HT → marge → arrondi HT → TVA → TTC ──────────────────
+  // ── 7. Sous-total HT → marge → arrondi HT → TVA → TTC ───────────────────
   const sousTotalHT = courant;
   lignes.push({ libelle: "Sous-total HT (avant marge)", montant: round2(sousTotalHT) });
 
-  const montantMarge = sousTotalHT * matrices.marge;
-  lignes.push({ libelle: `Marge commerciale (${pct(1 + matrices.marge)})`, montant: round2(montantMarge) });
   coefficients.push({ nom: "marge", valeur: 1 + matrices.marge, detail: pct(1 + matrices.marge) });
+  lignes.push({ libelle: `Marge commerciale (${pct(1 + matrices.marge)})`, montant: round2(sousTotalHT * matrices.marge) });
 
-  // Arrondi du HT à l'euro (le devis présenté au client est en euros pleins HT).
-  const prix_ht = Math.round(sousTotalHT + montantMarge);
+  const prix_ht = Math.round(sousTotalHT * (1 + matrices.marge));
   lignes.push({ libelle: "Prix HT (arrondi)", montant: prix_ht });
 
+  coefficients.push({ nom: "tva", valeur: 1 + matrices.tva, detail: `${(matrices.tva * 100).toFixed(0)}%` });
   const tva = round2(prix_ht * matrices.tva);
-  lignes.push({ libelle: `TVA (${pct(1 + matrices.tva).replace("+", "")})`, montant: tva });
-  coefficients.push({ nom: "tva", valeur: matrices.tva, detail: `${(matrices.tva * 100).toFixed(0)}%` });
+  lignes.push({ libelle: `TVA (${(matrices.tva * 100).toFixed(0)}%)`, montant: tva });
 
   const prix_ttc = round2(prix_ht + tva);
   lignes.push({ libelle: "Prix TTC", montant: prix_ttc });
@@ -458,13 +349,6 @@ export function calculerDevis(input: DevisInput, matrices: PricingMatrices = MAT
     lignes,
     coefficients,
     devise: "EUR",
-    meta: { type_deplacement, nb_jours, nuitees, type_vehicule, distance_facturee_km },
+    meta: { type_deplacement, type_vehicule: cap.type_vehicule, distance_km: distance, base_ht: round2(base) },
   };
-}
-
-/** Formate un coefficient multiplicatif en pourcentage signé (1.10 → « +10% »). */
-function pct(coeff: number): string {
-  const delta = Math.round((coeff - 1) * 100);
-  if (delta === 0) return "0%";
-  return `${delta > 0 ? "+" : ""}${delta}%`;
 }
