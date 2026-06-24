@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+:root {
+  --nt-cream: #f7f5ef;
+  --nt-ink: #0f1b2d;
+}
+
+body {
+  background: var(--nt-cream);
+  color: var(--nt-ink);
+  -webkit-font-smoothing: antialiased;
+}
