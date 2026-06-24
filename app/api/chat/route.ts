@@ -5,6 +5,9 @@ import { SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { calculerDevis, DevisError, type DevisInput } from "@/lib/pricing/calculer-devis";
 import { evaluerComplexite } from "@/lib/pipeline/complexite";
 import { estimerDistanceKm } from "@/lib/geo/distance";
+import { DemandeSchema } from "@/lib/ai/schema";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { creerClientEtDemande, attribuerDemande, enregistrerDevis } from "@/lib/crm";
 
 export const maxDuration = 30;
 
@@ -69,6 +72,61 @@ export async function POST(req: Request) {
             }
             throw e;
           }
+        },
+      }),
+
+      // ── Persistance CRM + attribution (une fois le contact obtenu) ────────
+      enregistrer_demande: tool({
+        description:
+          "Enregistre la demande dans le CRM et l'attribue automatiquement à un commercial. " +
+          "À appeler UNE FOIS le récapitulatif validé ET le numéro de téléphone obtenu.",
+        inputSchema: DemandeSchema.extend({ distance_km: z.number().positive().optional() }),
+        execute: async (input) => {
+          const today = new Date().toISOString().slice(0, 10);
+          const evalc = evaluerComplexite({
+            type_deplacement: input.type_deplacement,
+            nb_voyageurs: input.nb_voyageurs,
+            date_depart: input.date_depart,
+            date_retour: input.date_retour,
+            date_demande: today,
+            etapes: input.etapes,
+          });
+          let devis;
+          let valeur_panier: number | undefined;
+          if (input.distance_km && evalc.afficher_estimation) {
+            try {
+              devis = calculerDevis({
+                nb_passagers: input.nb_voyageurs,
+                type_deplacement: input.type_deplacement,
+                distance_km: input.distance_km,
+                date_depart: input.date_depart,
+                date_demande: today,
+                date_retour: input.date_retour,
+              });
+              valeur_panier = devis.prix_ttc;
+            } catch {
+              /* non chiffrable → escalade, pas d'estimation persistée */
+            }
+          }
+          const { demande_id } = await creerClientEtDemande(supabaseAdmin, {
+            ...input,
+            complexite: evalc.complexite,
+            valeur_panier_estimee: valeur_panier ?? null,
+          });
+          const attr = await attribuerDemande(supabaseAdmin, demande_id, input.type_prestation);
+          if (devis && attr.commercial) {
+            await enregistrerDevis(supabaseAdmin, demande_id, devis, {
+              type: "estimation",
+              commercial_id: attr.commercial.id,
+            });
+          }
+          return {
+            ok: true as const,
+            demande_id,
+            commercial: attr.commercial?.nom ?? null,
+            complexite: evalc.complexite,
+            escalade: !evalc.afficher_estimation,
+          };
         },
       }),
     },
