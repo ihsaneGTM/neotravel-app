@@ -2,7 +2,7 @@ import { streamText, tool, stepCountIs, convertToModelMessages, type UIMessage }
 import { z } from "zod";
 import { MODELS } from "@/lib/ai/models";
 import { SYSTEM_PROMPT } from "@/lib/ai/prompts";
-import { calculerDevis, DevisError, type DevisInput } from "@/lib/pricing/calculer-devis";
+import { calculerDevis, DevisError } from "@/lib/pricing/calculer-devis";
 import { evaluerComplexite } from "@/lib/pipeline/complexite";
 import { estimerDistanceKm } from "@/lib/geo/distance";
 import { DemandeSchema } from "@/lib/ai/schema";
@@ -13,14 +13,15 @@ export const maxDuration = 30;
 
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
+  const today = new Date().toISOString().slice(0, 10);
 
   const result = streamText({
     model: MODELS.agent,
-    system: SYSTEM_PROMPT,
+    system: `${SYSTEM_PROMPT}\n\n# Contexte\nDate du jour : ${today}. Résous toute date relative (« dans 5 jours », « le 20 août », « le week-end prochain ») par rapport à cette date, et fournis les dates aux outils au format YYYY-MM-DD. Ne propose jamais une date de départ dans le passé.`,
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(6), // borne la boucle d'outils
     tools: {
-      // ── Distance ville→ville (MVP stub — routing réel en J6) ──────────────
+      // ── Distance ville→ville (géocodage OSM + routing OSRM) ───────────────
       estimer_distance: tool({
         description:
           "Estime la distance (km) d'un aller entre deux villes. À appeler AVANT calculer_devis.",
@@ -41,17 +42,16 @@ export async function POST(req: Request) {
           distance_km: z.number().positive().describe("Distance d'un aller en km (via estimer_distance)"),
           nb_passagers: z.number().int().positive(),
           date_depart: z.string().describe("YYYY-MM-DD"),
-          date_demande: z.string().describe("YYYY-MM-DD (aujourd'hui)"),
           date_retour: z.string().optional().describe("YYYY-MM-DD"),
         }),
         execute: async (input) => {
-          // Politique amont : urgence/incohérence/complexe ⇒ estimation masquée.
+          // date_demande = aujourd'hui (jamais fournie par le modèle).
           const evalc = evaluerComplexite({
             type_deplacement: input.type_deplacement,
             nb_voyageurs: input.nb_passagers,
             date_depart: input.date_depart,
             date_retour: input.date_retour,
-            date_demande: input.date_demande,
+            date_demande: today,
           });
           if (!evalc.afficher_estimation) {
             return {
@@ -64,7 +64,14 @@ export async function POST(req: Request) {
             };
           }
           try {
-            const devis = calculerDevis(input as DevisInput);
+            const devis = calculerDevis({
+              nb_passagers: input.nb_passagers,
+              type_deplacement: input.type_deplacement,
+              distance_km: input.distance_km,
+              date_depart: input.date_depart,
+              date_demande: today,
+              date_retour: input.date_retour,
+            });
             return { ok: true as const, ...devis };
           } catch (e) {
             if (e instanceof DevisError) {
