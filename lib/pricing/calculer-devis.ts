@@ -333,6 +333,8 @@ export function calculerDevis(input: DevisInput, matrices: PricingMatrices = MAT
   lignes.push({ libelle: `Marge commerciale (${pct(1 + matrices.marge)})`, montant: round2(sousTotalHT * matrices.marge) });
 
   const prix_ht = Math.round(sousTotalHT * (1 + matrices.marge));
+  const arrondiHT = round2(prix_ht - sousTotalHT * (1 + matrices.marge));
+  if (arrondiHT !== 0) lignes.push({ libelle: "Arrondi HT à l'euro", montant: arrondiHT });
   lignes.push({ libelle: "Prix HT (arrondi)", montant: prix_ht });
 
   coefficients.push({ nom: "tva", valeur: 1 + matrices.tva, detail: `${(matrices.tva * 100).toFixed(0)}%` });
