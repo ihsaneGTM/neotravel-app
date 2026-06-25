@@ -11,11 +11,35 @@ import { StatusBadge, UrgenceBadge, ScorePill } from "./ui";
 
 type Tri = "score" | "valeur" | "date";
 
+const PREFS_KEY = "neotravel:inbox-prefs";
+
 export function LeadInbox({ leads }: { leads: LeadListItem[] }) {
   const [q, setQ] = useState("");
   const [filtre, setFiltre] = useState<Statut | "all">("all");
   const [vue, setVue] = useState<"list" | "kanban">("list");
   const [tri, setTri] = useState<Tri>("score");
+
+  // Restaure la vue/filtre/tri d'où on venait (persistés entre navigations).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PREFS_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw) as { vue?: "list" | "kanban"; filtre?: Statut | "all"; tri?: Tri };
+      if (p.vue === "list" || p.vue === "kanban") setVue(p.vue);
+      if (p.filtre) setFiltre(p.filtre);
+      if (p.tri) setTri(p.tri);
+    } catch {
+      /* localStorage indisponible : on garde les valeurs par défaut */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ vue, filtre, tri }));
+    } catch {
+      /* ignore */
+    }
+  }, [vue, filtre, tri]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: leads.length };
