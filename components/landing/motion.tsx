@@ -152,20 +152,35 @@ export function ParallaxLayer({ children, className = "", strength = 18 }: { chi
   );
 }
 
-/** Accordéon FAQ. */
+/** Mot qui tourne dans le titre du hero (façon Autopilot). */
+export function RotatingWord({ words, interval = 2200 }: { words: string[]; interval?: number }) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = setInterval(() => setI((p) => (p + 1) % words.length), interval);
+    return () => clearInterval(id);
+  }, [words.length, interval]);
+  return (
+    <span className="ap-rotator">
+      <b key={i}>{words[i]}</b>
+    </span>
+  );
+}
+
+/** Accordéon FAQ (variante panneau bleu). */
 export function Faq({ items }: { items: { q: string; a: string }[] }) {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <div className="lp-faq">
+    <div className="ap-faq">
       {items.map((it, i) => (
-        <div className="lp-faq-item" key={i} data-open={open === i}>
-          <button className="lp-faq-q" onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}>
+        <div className="ap-faq-item" key={i} data-open={open === i}>
+          <button className="ap-faq-q" onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}>
             {it.q}
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9l6 6 6-6" />
             </svg>
           </button>
-          <div className="lp-faq-a">
+          <div className="ap-faq-a">
             <div>
               <p>{it.a}</p>
             </div>

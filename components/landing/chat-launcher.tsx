@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Conversation } from "@/components/chat/conversation";
 
 const EVT = "neotravel:open-chat";
@@ -14,7 +14,7 @@ export function openChat(message?: string) {
 export function OpenChatButton({
   children,
   message,
-  className = "lp-btn lp-btn-primary",
+  className = "ap-btn ap-btn-blue",
   ...rest
 }: {
   children: ReactNode;
@@ -32,10 +32,13 @@ export function OpenChatButton({
 export function ChatProvider() {
   const [open, setOpen] = useState(false);
   const [initial, setInitial] = useState<string | undefined>(undefined);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const onOpen = (e: Event) => {
       const msg = (e as CustomEvent<{ message?: string }>).detail?.message;
+      restoreRef.current = document.activeElement as HTMLElement | null;
       setInitial(msg);
       setOpen(true);
     };
@@ -45,15 +48,49 @@ export function ChatProvider() {
 
   useEffect(() => {
     if (!open) return;
+
+    // Focus initial dans la modale (le champ de saisie a autoFocus, sinon la feuille).
+    sheetRef.current?.focus();
+
+    const focusables = () =>
+      Array.from(
+        sheetRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !sheetRef.current) return;
+      // Piège de focus : Tab boucle à l'intérieur de la modale.
+      const f = focusables();
+      if (!f.length) return;
+      const first = f[0];
+      const last = f[f.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (!sheetRef.current.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
+
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
+      // Restaure le focus sur l'élément déclencheur.
+      restoreRef.current?.focus?.();
     };
   }, [open]);
 
@@ -62,7 +99,7 @@ export function ChatProvider() {
   return (
     <div className="lp-overlay" role="dialog" aria-modal="true" aria-label="Assistant NeoTravel">
       <div className="lp-overlay-scrim" onClick={() => setOpen(false)} />
-      <div className="lp-sheet">
+      <div className="lp-sheet" ref={sheetRef} tabIndex={-1}>
         <div className="lp-sheet-head">
           <div className="lp-sheet-avatar" aria-hidden>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
