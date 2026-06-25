@@ -28,6 +28,19 @@ export interface LeadScore {
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
+/** Paramétrage du scoring (source unique — affiché tel quel dans le Workflow). */
+export const SCORING = {
+  conversionWeights: { budget: 0.4, urgency: 0.3, completeness: 0.3 },
+  globalWeights: { budget: 0.35, conversion: 0.25, volume: 0.2, urgency: 0.1, completeness: 0.1 },
+  dimensions: [
+    { key: "budget", label: "Budget potentiel", desc: "panier estimé ÷ 8 000 € (plafonné à 100)" },
+    { key: "urgency", label: "Urgence", desc: "proximité du départ : ≤ 7 j = 100, ≥ 90 j = 20" },
+    { key: "volume", label: "Volume", desc: "nb voyageurs ÷ 85" },
+    { key: "completeness", label: "Complétude", desc: "email, tél, commentaire, options, budget, date retour" },
+    { key: "conversion", label: "Probabilité de conversion", desc: "0,4·budget + 0,3·urgence + 0,3·complétude" },
+  ],
+} as const;
+
 export function computeScore(d: ScoreInput): LeadScore {
   // Budget : panier estimé (plafonné à 8 000 € = 100).
   const panier = Number(d.valeur_panier_estimee) || 0;
@@ -54,10 +67,12 @@ export function computeScore(d: ScoreInput): LeadScore {
   const completeness = clamp((checks.filter(Boolean).length / checks.length) * 100);
 
   // Conversion Likelihood : composite pondéré (budget + urgence + complétude).
-  const conversion = clamp(budget * 0.4 + urgency * 0.3 + completeness * 0.3);
+  const cw = SCORING.conversionWeights;
+  const conversion = clamp(budget * cw.budget + urgency * cw.urgency + completeness * cw.completeness);
 
   // Score global : pondération métier.
-  const score = clamp(budget * 0.35 + conversion * 0.25 + volume * 0.2 + urgency * 0.1 + completeness * 0.1);
+  const gw = SCORING.globalWeights;
+  const score = clamp(budget * gw.budget + conversion * gw.conversion + volume * gw.volume + urgency * gw.urgency + completeness * gw.completeness);
 
   return { budget, urgency, volume, completeness, conversion, score };
 }
