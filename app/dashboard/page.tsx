@@ -29,8 +29,9 @@ export default async function Dashboard() {
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Dashboard de pilotage</h1>
         </div>
         <nav className="flex gap-4 text-sm font-medium text-emerald-700">
-          <a href="/" className="underline underline-offset-2">Chat</a>
+          <a href="/commercial" className="underline underline-offset-2">Espace commercial</a>
           <a href="/simulateur" className="underline underline-offset-2">Simulateur</a>
+          <a href="/" className="underline underline-offset-2">Chat</a>
         </nav>
       </header>
 
