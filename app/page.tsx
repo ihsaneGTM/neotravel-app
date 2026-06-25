@@ -4,7 +4,10 @@ export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-4 py-10">
       <header className="mb-6 text-center">
-        <div className="mb-2 flex justify-end">
+        <div className="mb-2 flex justify-end gap-4">
+          <a href="/dashboard" className="text-xs font-medium text-emerald-700 underline underline-offset-2">
+            Dashboard →
+          </a>
           <a href="/simulateur" className="text-xs font-medium text-emerald-700 underline underline-offset-2">
             Simulateur tarifaire →
           </a>
