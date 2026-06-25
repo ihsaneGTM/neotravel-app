@@ -97,7 +97,7 @@ export function ChatProvider() {
   if (!open) return null;
 
   return (
-    <div className="lp-overlay" role="dialog" aria-modal="true" aria-label="Assistant NeoTravel">
+    <div className="lp-overlay" role="dialog" aria-modal="true" aria-label="Assistant Autocar-Location">
       <div className="lp-overlay-scrim" onClick={() => setOpen(false)} />
       <div className="lp-sheet" ref={sheetRef} tabIndex={-1}>
         <div className="lp-sheet-head">
@@ -107,7 +107,7 @@ export function ChatProvider() {
             </svg>
           </div>
           <div>
-            <div className="lp-sheet-title">Assistant NeoTravel</div>
+            <div className="lp-sheet-title">Assistant Autocar-Location</div>
             <div className="lp-sheet-sub">En ligne · réponse immédiate</div>
           </div>
           <button className="lp-sheet-close" onClick={() => setOpen(false)} aria-label="Fermer">

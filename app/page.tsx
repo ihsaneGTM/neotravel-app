@@ -4,6 +4,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import { RoutePlanner } from "@/components/landing/route-planner";
 import { ChatProvider, OpenChatButton } from "@/components/landing/chat-launcher";
 import { Reveal, RotatingWord, Faq } from "@/components/landing/motion";
+import { RouteMap } from "@/components/landing/route-map";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -50,13 +51,10 @@ export default function Home() {
           <Clouds />
           <div className="ap-hero-inner">
             <nav className="ap-nav">
-              <a href="#top" className="ap-logo">
-                <span className="ap-logo-mark" aria-hidden>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 17h2l1-5h12l1 5h2M6 12l1-5h10l1 5M7 17v2M17 17v2" />
-                  </svg>
+              <a href="#top" className="ap-logo" aria-label="Autocar-Location — accueil">
+                <span className="ap-logo-badge">
+                  <Image src="/landing/logo-autocarloc.png" alt="Autocar-Location" width={124} height={29} priority />
                 </span>
-                NeoTravel
               </a>
               <div className="ap-navlinks">
                 <a href="#vehicules" className="ap-navlink">Véhicules</a>
@@ -97,17 +95,52 @@ export default function Home() {
           <p className="ap-kicker">Le saviez-vous ?</p>
           <p className="ap-statement" style={{ marginTop: 18 }}>
             Aujourd&apos;hui, <span className="hl">1 demande de groupe sur 2</span>{" "}attend plus de 48 h avant
-            d&apos;obtenir une réponse. Avec NeoTravel, vous êtes rappelé en{" "}
+            d&apos;obtenir une réponse. Avec Autocar-Location, vous êtes rappelé en{" "}
             <span className="hl-2">moins de 2 heures</span>.
           </p>
         </Reveal>
+      </section>
+
+      {/* ── ITINÉRAIRE EN DIRECT (carte Leaflet) ──────────── */}
+      <section className="ap-section ap-shell" style={{ paddingTop: 0 }}>
+        <div className="ap-mapsec">
+          <Reveal>
+            <p className="ap-kicker">Itinéraire en direct</p>
+            <h2 className="ap-display ap-h2" style={{ marginTop: 12 }}>
+              Votre trajet, tracé
+              <br />
+              de bout en bout.
+            </h2>
+            <p className="ap-lead">
+              De votre point de départ à l&apos;arrivée — étapes comprises — chaque kilomètre est cartographié.
+              Vous savez exactement par où passe votre groupe.
+            </p>
+            <div className="ap-map-stats">
+              <span className="ap-map-stat">
+                <b>≈ 582 km</b>
+              </span>
+              <span className="ap-map-stat">
+                <b>≈ 5 h</b> de route
+              </span>
+              <span className="ap-map-stat">
+                Autocar <b>55 places</b>
+              </span>
+            </div>
+            <OpenChatButton className="ap-btn ap-btn-dark" style={{ marginTop: 22 }}>
+              Planifier mon trajet <ArrowUR />
+            </OpenChatButton>
+          </Reveal>
+          <Reveal delay={120}>
+            <RouteMap />
+          </Reveal>
+        </div>
       </section>
 
       {/* ── POURQUOI (features décalées) ──────────────────── */}
       <section className="ap-section ap-shell" style={{ paddingTop: 0 }} id="vehicules">
         <Reveal className="ap-feat-head">
           <div>
-            <p className="ap-kicker">Pourquoi NeoTravel</p>
+            <p className="ap-kicker">Pourquoi Autocar-Location</p>
             <h2 className="ap-display ap-h2" style={{ marginTop: 12 }}>
               La confiance, avant même
               <br />
@@ -161,7 +194,7 @@ export default function Home() {
                   <div className="ap-mock-pill" style={{ marginBottom: 12 }}>
                     <span className="ap-mock-dot" /> Bordeaux
                     <span style={{ opacity: 0.7 }}>→</span>
-                    <span className="ap-mock-dot" style={{ background: "#ffd24a" }} /> Paris
+                    <span className="ap-mock-dot" style={{ background: "#d8e762" }} /> Paris
                   </div>
                   <div className="ap-mock-bar" style={{ width: "100%", marginBottom: 8 }} />
                   <div className="ap-mock-bar" style={{ width: "62%" }} />
@@ -193,7 +226,7 @@ export default function Home() {
                 <Clouds />
                 <div className="ap-mock">
                   <div className="ap-mock-row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
-                    <span>Devis NeoTravel</span>
+                    <span>Devis Autocar-Loc</span>
                     <span className="ap-mock-chip">PDF</span>
                   </div>
                   <div className="ap-mock-bar" style={{ width: "100%", marginBottom: 8 }} />
@@ -317,16 +350,16 @@ export default function Home() {
       <section className="ap-section ap-shell" style={{ paddingTop: 0 }}>
         <Reveal>
           <div className="ap-story">
-            <h2 className="ap-display">Pourquoi NeoTravel&nbsp;?</h2>
+            <h2 className="ap-display">Pourquoi Autocar-Location&nbsp;?</h2>
             <p>
               Réserver un car pour un groupe, ça devrait être simple. Trop souvent, c&apos;est une chaîne de mails,
               des devis qui tardent et des prix opaques.
             </p>
             <p>
-              On a construit NeoTravel pour inverser ça&nbsp;: vous décrivez votre trajet en une minute, un conseiller
+              On a construit Autocar-Location pour inverser ça&nbsp;: vous décrivez votre trajet en une minute, un conseiller
               vous rappelle dans l&apos;heure, et vous repartez avec une proposition claire — sans jargon, sans pression.
             </p>
-            <p className="sign">— L&apos;équipe NeoTravel</p>
+            <p className="sign">— L&apos;équipe Autocar-Location</p>
           </div>
         </Reveal>
       </section>
@@ -339,7 +372,7 @@ export default function Home() {
             <h2 className="ap-display">
               Mettez vos trajets
               <br />
-              de groupe sur NeoTravel.
+              de groupe sur Autocar-Location.
             </h2>
             <OpenChatButton className="ap-btn ap-btn-white">
               Demander un devis <ArrowUR />
@@ -351,13 +384,8 @@ export default function Home() {
       {/* ── FOOTER ────────────────────────────────────────── */}
       <footer className="ap-footer ap-shell">
         <div className="ap-footer-inner">
-          <a href="#top" className="ap-logo" style={{ color: "var(--black)" }}>
-            <span className="ap-logo-mark" style={{ background: "var(--blue)", color: "#fff" }} aria-hidden>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 17h2l1-5h12l1 5h2M6 12l1-5h10l1 5M7 17v2M17 17v2" />
-              </svg>
-            </span>
-            NeoTravel
+          <a href="#top" className="ap-footer-logo" aria-label="Autocar-Location — haut de page">
+            <Image src="/landing/logo-autocarloc.png" alt="Autocar-Location" width={150} height={35} />
           </a>
           <nav>
             <a href="#how">Comment ça marche</a>
@@ -368,7 +396,7 @@ export default function Home() {
           </nav>
         </div>
         <div className="ap-footer-copy" style={{ marginTop: 24 }}>
-          © {new Date().getFullYear()}{" "}NeoTravel — Transport de groupe avec chauffeur · France &amp; Europe.
+          © {new Date().getFullYear()}{" "}Autocar-Location — Transport de groupe avec chauffeur · France &amp; Europe.
         </div>
       </footer>
     </div>
@@ -377,7 +405,7 @@ export default function Home() {
 
 function Stars() {
   return (
-    <span style={{ display: "inline-flex", gap: 1, color: "#ffd24a" }}>
+    <span style={{ display: "inline-flex", gap: 1, color: "#d8e762" }}>
       {Array.from({ length: 5 }).map((_, i) => (
         <svg key={i} width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
           <path d="M12 2l2.9 6.3 6.9.7-5.1 4.6 1.4 6.8L12 17.8 5.9 20.4l1.4-6.8L2.2 9l6.9-.7z" />
