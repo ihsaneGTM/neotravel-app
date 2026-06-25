@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   LayoutDashboard,
-  Waypoints,
   Inbox,
   Bell,
   BarChart3,
@@ -14,11 +13,12 @@ import {
   LogOut,
   ChevronLeft,
   MessageSquare,
+  Workflow,
 } from "lucide-react";
 
+// Pages d'usage quotidien (commerciaux)
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/map", label: "Pipeline Map", icon: Waypoints },
   { href: "/leads", label: "Lead Inbox", icon: Inbox },
   { href: "/follow-ups", label: "Follow-ups", icon: Bell },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
@@ -30,12 +30,27 @@ export function Rail() {
   const [collapsed, setCollapsed] = useState(false);
   const w = collapsed ? "w-[68px]" : "w-[228px]";
 
+  const item = (href: string, label: string, Icon: typeof Inbox) => {
+    const active = pathname === href || pathname.startsWith(href + "/");
+    return (
+      <Link
+        href={href}
+        title={collapsed ? label : undefined}
+        className={`nt-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+          active ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+        }`}
+      >
+        <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={active ? 2.4 : 2} />
+        {!collapsed && <span>{label}</span>}
+      </Link>
+    );
+  };
+
   return (
     <aside
       className={`${w} sticky top-0 flex h-screen shrink-0 flex-col border-r border-[var(--line)] bg-white transition-[width] duration-300`}
       style={{ transitionTimingFunction: "var(--ease-out)" }}
     >
-      {/* Logo */}
       <Link href="/dashboard" className="flex h-16 items-center gap-2.5 px-4">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white shadow-sm">
           <Sparkles className="h-5 w-5" strokeWidth={2.2} />
@@ -43,27 +58,17 @@ export function Rail() {
         {!collapsed && <span className="text-[15px] font-bold tracking-tight text-slate-900">NeoTravel</span>}
       </Link>
 
-      {/* Nav */}
-      <nav className="flex-1 space-y-1 px-3 py-3">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
-          return (
-            <Link
-              key={href}
-              href={href}
-              title={collapsed ? label : undefined}
-              className={`nt-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                active ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
-              }`}
-            >
-              <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={active ? 2.4 : 2} />
-              {!collapsed && <span>{label}</span>}
-            </Link>
-          );
-        })}
-      </nav>
+      {/* Usage quotidien */}
+      <nav className="flex-1 space-y-1 px-3 py-3">{NAV.map((n) => <div key={n.href}>{item(n.href, n.label, n.icon)}</div>)}</nav>
 
-      {/* Bas */}
+      {/* Configuration (growth / ops) — dissociée du quotidien */}
+      <div className="mx-3 border-t border-[var(--line-2)]" />
+      <div className="px-3 py-3">
+        {!collapsed && <p className="mb-1 px-3 text-[0.65rem] font-semibold uppercase tracking-wider text-slate-300">Configuration</p>}
+        {item("/workflow", "Workflow", Workflow)}
+      </div>
+
+      {/* Footer */}
       <div className="space-y-1 border-t border-[var(--line)] px-3 py-3">
         <Link
           href="/"

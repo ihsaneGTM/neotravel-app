@@ -86,8 +86,13 @@ export function PipelineMap({ data }: { data: MapData }) {
   const [view, setView] = useState({ x: 60, y: 120, k: 0.92 });
   const [drag, setDrag] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
+  const [hoverEdge, setHoverEdge] = useState<number | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const panStart = useRef({ mx: 0, my: 0, x: 0, y: 0 });
+  const clearT = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setEdge = (i: number) => { if (clearT.current) clearTimeout(clearT.current); setHoverEdge(i); };
+  const scheduleClear = () => { if (clearT.current) clearTimeout(clearT.current); clearT.current = setTimeout(() => setHoverEdge(null), 160); };
 
   const fit = useCallback(() => {
     const el = wrap.current;
@@ -104,15 +109,21 @@ export function PipelineMap({ data }: { data: MapData }) {
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const rect = el.getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
-      setView((v) => {
-        const k = Math.max(0.45, Math.min(1.8, v.k * (1 - e.deltaY * 0.0014)));
-        const wx = (cx - v.x) / v.k;
-        const wy = (cy - v.y) / v.k;
-        return { k, x: cx - wx * k, y: cy - wy * k };
-      });
+      // Pincer (trackpad) ou Ctrl/⌘+molette → zoom centré sur le curseur.
+      if (e.ctrlKey || e.metaKey) {
+        const rect = el.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        setView((v) => {
+          const k = Math.max(0.4, Math.min(1.9, v.k * (1 - e.deltaY * 0.012)));
+          const wx = (cx - v.x) / v.k;
+          const wy = (cy - v.y) / v.k;
+          return { k, x: cx - wx * k, y: cy - wy * k };
+        });
+      } else {
+        // Deux doigts sur le trackpad (façon Figma) → déplacement.
+        setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
+      }
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -139,6 +150,7 @@ export function PipelineMap({ data }: { data: MapData }) {
   };
 
   const selNode = nodes.find((n) => n.key === sel);
+  const insertIdx = sel?.startsWith("insert-") ? Number(sel.slice(7)) : null;
 
   return (
     <div
@@ -172,11 +184,13 @@ export function PipelineMap({ data }: { data: MapData }) {
         </svg>
 
         {/* Nœuds */}
-        {nodes.map((n) => (
+        {nodes.map((n, i) => (
           <button
             key={n.key}
             data-ui
             onClick={() => setSel(n.key)}
+            onMouseEnter={() => (i < nodes.length - 1 ? setEdge(i) : scheduleClear())}
+            onMouseLeave={scheduleClear}
             className="nt-node-card absolute rounded-[18px] border text-left transition-all"
             style={{
               left: n.x, top: n.y, width: NODE_W, minHeight: NODE_H,
@@ -212,6 +226,35 @@ export function PipelineMap({ data }: { data: MapData }) {
           </button>
         ))}
 
+        {/* + d'insertion entre deux briques (au hover) */}
+        {nodes.slice(0, -1).map((n, i) => {
+          const a = anchorR(n);
+          const b = anchorL(nodes[i + 1]);
+          const mx = (a.x + b.x) / 2;
+          const my = (a.y + b.y) / 2;
+          const on = hoverEdge === i;
+          return (
+            <div
+              key={`ins-${i}`}
+              data-ui
+              onMouseEnter={() => setEdge(i)}
+              onMouseLeave={scheduleClear}
+              className="absolute"
+              style={{ left: mx - 28, top: my - 28, width: 56, height: 56 }}
+            >
+              <button
+                onClick={() => setSel(`insert-${i}`)}
+                title={`Insérer une brique entre « ${n.title} » et « ${nodes[i + 1].title} »`}
+                className={`absolute left-[10px] top-[10px] grid h-9 w-9 place-items-center rounded-full border-2 border-dashed bg-white text-indigo-500 shadow-sm transition-all duration-150 ${
+                  on ? "scale-100 border-indigo-300 opacity-100 hover:bg-indigo-50" : "pointer-events-none scale-50 border-slate-300 opacity-0"
+                }`}
+              >
+                <Plus className="h-4 w-4" strokeWidth={2.6} />
+              </button>
+            </div>
+          );
+        })}
+
         {/* Ajouter une brique */}
         <button
           data-ui
@@ -232,8 +275,8 @@ export function PipelineMap({ data }: { data: MapData }) {
             <Waypoints className="h-5 w-5" strokeWidth={2.2} />
           </span>
           <div>
-            <p className="text-sm font-bold leading-tight text-slate-900">Pipeline Map</p>
-            <p className="text-xs text-slate-400">Le pipeline commercial en temps réel</p>
+            <p className="text-sm font-bold leading-tight text-slate-900">Workflow</p>
+            <p className="text-xs text-slate-400">Automatisations & connecteurs · configuration</p>
           </div>
           <div className="ml-3 flex items-center gap-3 border-l border-[var(--line)] pl-3 text-[0.7rem] text-slate-500">
             <span className="flex items-center gap-1.5"><span className="nt-live-dot h-1.5 w-1.5 rounded-full bg-emerald-500" /> live</span>
@@ -262,7 +305,16 @@ export function PipelineMap({ data }: { data: MapData }) {
       {sel && (
         <aside data-ui className="absolute right-4 top-20 bottom-4 w-[330px] overflow-y-auto rounded-2xl border border-[var(--line)] bg-white/95 p-5 shadow-[var(--sh-3)] backdrop-blur nt-in nt-scroll">
           <button data-ui onClick={() => setSel(null)} className="absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
-          {sel === "add" ? (
+          {insertIdx != null && nodes[insertIdx + 1] ? (
+            <div>
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><Plus className="h-5 w-5" /></span>
+              <h3 className="mt-3 text-base font-semibold text-slate-900">Insérer une brique</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                Ajouter une étape <strong>entre « {nodes[insertIdx].title} » et « {nodes[insertIdx + 1].title} »</strong> : enrichissement de données, validation/QA, scoring complémentaire, ou une règle conditionnelle.
+              </p>
+              <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">L'édition du workflow depuis la map arrive dans une prochaine itération.</p>
+            </div>
+          ) : sel === "add" ? (
             <div>
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><Plus className="h-5 w-5" /></span>
               <h3 className="mt-3 text-base font-semibold text-slate-900">Ajouter une brique</h3>
@@ -312,7 +364,7 @@ export function PipelineMap({ data }: { data: MapData }) {
 
       {/* Aide pan/zoom */}
       <p data-ui className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/70 px-3 py-1 text-[0.7rem] text-slate-400 backdrop-blur">
-        Glissez pour déplacer · molette pour zoomer
+        Deux doigts (ou glisser) pour déplacer · pincez ou ⌘+molette pour zoomer
       </p>
     </div>
   );
