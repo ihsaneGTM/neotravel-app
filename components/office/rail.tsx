@@ -12,7 +12,7 @@ import {
   Sparkles,
   LogOut,
   ChevronLeft,
-  MessageSquare,
+  MessagesSquare,
   Workflow,
   Wand2,
 } from "lucide-react";
@@ -21,6 +21,7 @@ import {
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Lead Inbox", icon: Inbox },
+  { href: "/conversations", label: "Conversations", icon: MessagesSquare },
   { href: "/follow-ups", label: "Follow-ups", icon: Bell },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/templates", label: "Templates", icon: FileText },
@@ -72,14 +73,6 @@ export function Rail() {
 
       {/* Footer */}
       <div className="space-y-1 border-t border-[var(--line)] px-3 py-3">
-        <Link
-          href="/"
-          title="Chat public"
-          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
-        >
-          <MessageSquare className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
-          {!collapsed && <span>Chat public</span>}
-        </Link>
         <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-50">
           <LogOut className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
           {!collapsed && <span>Sign Out</span>}

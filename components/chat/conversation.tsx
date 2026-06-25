@@ -26,7 +26,8 @@ function parseMarkers(text: string) {
 }
 
 export function Conversation() {
-  const { messages, sendMessage, status } = useChat();
+  const [convId] = useState(() => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `conv-${Date.now()}`));
+  const { messages, sendMessage, status } = useChat({ id: convId });
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const busy = status === "submitted" || status === "streaming";

@@ -115,6 +115,42 @@ export async function getFollowups(sb: SupabaseClient): Promise<FollowupsData> {
   };
 }
 
+export interface ConversationItem {
+  id: string;
+  statut: string;
+  complexite: string | null;
+  client: string | null;
+  demande_id: string | null;
+  dernier_message: string | null;
+  nb_messages: number;
+  updated_at: string;
+  transcript: { role: string; text: string }[];
+}
+
+export async function getConversations(sb: SupabaseClient): Promise<ConversationItem[]> {
+  const { data } = await sb
+    .from("conversations")
+    .select("id, statut, complexite, demande_id, dernier_message, nb_messages, updated_at, transcript, clients(prenom, nom)")
+    .order("updated_at", { ascending: false });
+  const rows = (data ?? []) as unknown as {
+    id: string; statut: string; complexite: string | null; demande_id: string | null;
+    dernier_message: string | null; nb_messages: number; updated_at: string;
+    transcript: { role: string; text: string }[] | null;
+    clients: { prenom: string | null; nom: string | null } | null;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    statut: r.statut,
+    complexite: r.complexite,
+    client: r.clients ? [r.clients.prenom, r.clients.nom].filter(Boolean).join(" ") || null : null,
+    demande_id: r.demande_id,
+    dernier_message: r.dernier_message,
+    nb_messages: r.nb_messages,
+    updated_at: r.updated_at,
+    transcript: Array.isArray(r.transcript) ? r.transcript : [],
+  }));
+}
+
 export interface AnalyticsData {
   total: number;
   pipeline_value: number;
