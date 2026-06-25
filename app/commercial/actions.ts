@@ -6,6 +6,7 @@ import { transitionStatut, enregistrerDevis } from "@/lib/crm";
 import { calculerDevis, DevisError, type TypeDeplacement } from "@/lib/pricing/calculer-devis";
 import { estimerDistanceKm } from "@/lib/geo/distance";
 import { sendEmail, renderDevisEmail } from "@/lib/email/resend";
+import { getRelancesCadence } from "@/lib/config/app-config";
 
 function revalidateLead(id: string) {
   revalidatePath(`/leads/${id}`);
@@ -110,17 +111,20 @@ export async function envoyerDevis(formData: FormData) {
     .update({ envoye_at: new Date().toISOString(), resend_id, destinataire: email, numero })
     .eq("id", devis.id);
   await transitionStatut(supabaseAdmin, id, "quote_sent");
-  // Planifie une relance J+3 (boucle réelle alimentant le centre de relances).
-  await supabaseAdmin.from("relances").insert({
+  // Planifie les relances selon la cadence configurable (Workflow → Relances).
+  const cadence = await getRelancesCadence(supabaseAdmin);
+  const typeFor = (n: number) => (n === 1 ? "j1" : n === 3 ? "j3" : n === 7 ? "j7" : "relance_personnalisee");
+  const relances = cadence.map((n) => ({
     demande_id: id,
     devis_id: devis.id,
-    type: "j3",
+    type: typeFor(n),
     statut: "planifiee",
-    planifiee_pour: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+    planifiee_pour: new Date(Date.now() + n * 86_400_000).toISOString(),
     canal: "email",
     destinataire: email,
-    objet: `Relance — devis ${numero}`,
-  });
+    objet: `Relance J+${n} — devis ${numero}`,
+  }));
+  if (relances.length) await supabaseAdmin.from("relances").insert(relances);
   revalidateLead(id);
   revalidatePath("/follow-ups");
 }

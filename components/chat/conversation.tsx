@@ -25,12 +25,29 @@ function parseMarkers(text: string) {
   return { display: kept.join("\n").trim(), choices, contact };
 }
 
-export function Conversation() {
-  const [convId] = useState(() => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `conv-${Date.now()}`));
+export function Conversation({
+  initialMessage,
+  greeting = "Bonjour ! Où souhaitez-vous aller, pour combien de personnes et à quelle date ? Je vous aide à préparer votre demande.",
+}: {
+  initialMessage?: string;
+  greeting?: string;
+}) {
+  const [convId] = useState(() =>
+    typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `conv-${Date.now()}`
+  );
   const { messages, sendMessage, status } = useChat({ id: convId });
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
+  const startedRef = useRef(false);
   const busy = status === "submitted" || status === "streaming";
+
+  // Auto-amorçage : envoie le trajet composé dans le hero une seule fois.
+  useEffect(() => {
+    if (initialMessage && !startedRef.current) {
+      startedRef.current = true;
+      sendMessage({ text: initialMessage });
+    }
+  }, [initialMessage, sendMessage]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -42,13 +59,9 @@ export function Conversation() {
   };
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex-1 space-y-3 overflow-y-auto p-4" style={{ minHeight: 380 }}>
-        {messages.length === 0 && (
-          <Bubble role="assistant">
-            Bonjour&nbsp;! Où souhaitez-vous aller, pour combien de personnes et à quelle date&nbsp;? Je vous aide à préparer votre demande.
-          </Bubble>
-        )}
+    <div className="lp-chat">
+      <div className="lp-chat-scroll">
+        {messages.length === 0 && !initialMessage && <Bubble role="assistant">{greeting}</Bubble>}
 
         {messages.map((m, i) => {
           const text = m.parts
@@ -57,25 +70,31 @@ export function Conversation() {
             .join("");
           const usesTool = m.role !== "user" && m.parts.some((p) => p.type.startsWith("tool-"));
           const isAssistant = m.role !== "user";
-          const { display, choices, contact } = isAssistant ? parseMarkers(text) : { display: text, choices: null, contact: false };
+          const { display, choices, contact } = isAssistant
+            ? parseMarkers(text)
+            : { display: text, choices: null, contact: false };
           const isLast = i === messages.length - 1 && isAssistant && !busy;
 
           return (
-            <div key={m.id} className="space-y-2">
+            <div key={m.id} className="lp-chat-row" style={{ display: "contents" }}>
               {display && <Bubble role={m.role === "user" ? "user" : "assistant"}>{display}</Bubble>}
-              {usesTool && !display && <p className="pl-1 text-xs text-slate-400">Enregistrement de votre demande…</p>}
+              {usesTool && !display && <p style={{ fontSize: "0.78rem", color: "var(--ink-faint)", paddingLeft: 4 }}>Enregistrement de votre demande…</p>}
               {isLast && choices && <ChoiceWidget question={choices.question} options={choices.options} onPick={send} />}
               {isLast && contact && <ContactForm onSubmit={send} />}
             </div>
           );
         })}
 
-        {busy && <p className="pl-1 text-xs text-slate-400">NeoTravel écrit…</p>}
+        {busy && (
+          <div className="lp-typing">
+            <i /><i /><i />
+          </div>
+        )}
         <div ref={endRef} />
       </div>
 
       <form
-        className="flex gap-2 border-t border-slate-200 p-3"
+        className="lp-chat-form"
         onSubmit={(e) => {
           e.preventDefault();
           const t = input.trim();
@@ -85,18 +104,17 @@ export function Conversation() {
         }}
       >
         <input
-          className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-          placeholder="Décrivez votre besoin…"
+          className="lp-chat-input"
+          placeholder="Écrivez votre réponse…"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={busy}
+          autoFocus
         />
-        <button
-          type="submit"
-          className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-40"
-          disabled={busy || !input.trim()}
-        >
-          Envoyer
+        <button type="submit" className="lp-chat-send" disabled={busy || !input.trim()} aria-label="Envoyer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
         </button>
       </form>
     </div>
@@ -105,15 +123,11 @@ export function Conversation() {
 
 function ChoiceWidget({ question, options, onPick }: { question: string; options: string[]; onPick: (t: string) => void }) {
   return (
-    <div className="flex flex-col items-start gap-2 pl-1">
-      {question && <p className="text-sm text-slate-600">{question}</p>}
-      <div className="flex flex-wrap gap-2">
+    <div style={{ alignSelf: "flex-start", display: "flex", flexDirection: "column", gap: 8 }}>
+      {question && <p style={{ fontSize: "0.9rem", color: "var(--ink-soft)" }}>{question}</p>}
+      <div className="lp-chips">
         {options.map((o) => (
-          <button
-            key={o}
-            onClick={() => onPick(o)}
-            className="rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100 active:scale-95"
-          >
+          <button key={o} className="lp-chip" onClick={() => onPick(o)}>
             {o}
           </button>
         ))}
@@ -125,26 +139,38 @@ function ChoiceWidget({ question, options, onPick }: { question: string; options
 function ContactForm({ onSubmit }: { onSubmit: (t: string) => void }) {
   const [f, setF] = useState({ prenom: "", nom: "", email: "", telephone: "", consent: false });
   const [done, setDone] = useState(false);
-  const ok = f.prenom.trim() && f.nom.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email) && f.telephone.trim() && f.consent;
+  const ok =
+    f.prenom.trim() &&
+    f.nom.trim() &&
+    /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email) &&
+    f.telephone.trim() &&
+    f.consent;
 
   if (done) return null;
 
   return (
-    <div className="w-full max-w-sm rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
-      <p className="mb-3 text-sm font-medium text-slate-700">Vos coordonnées — un commercial vous rappelle dans la journée.</p>
-      <div className="grid grid-cols-2 gap-2">
+    <div className="lp-cform">
+      <p style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--ink)", marginBottom: 12 }}>
+        Vos coordonnées — un conseiller vous rappelle dans la journée.
+      </p>
+      <div className="lp-cform-grid">
         <Field label="Prénom" value={f.prenom} onChange={(v) => setF({ ...f, prenom: v })} />
         <Field label="Nom" value={f.nom} onChange={(v) => setF({ ...f, nom: v })} />
       </div>
-      <div className="mt-2">
+      <div style={{ marginTop: 10 }}>
         <Field label="Email" type="email" value={f.email} onChange={(v) => setF({ ...f, email: v })} />
       </div>
-      <div className="mt-2">
+      <div style={{ marginTop: 10 }}>
         <Field label="Téléphone" type="tel" value={f.telephone} onChange={(v) => setF({ ...f, telephone: v })} />
       </div>
-      <label className="mt-3 flex items-start gap-2 text-xs text-slate-500">
-        <input type="checkbox" checked={f.consent} onChange={(e) => setF({ ...f, consent: e.target.checked })} className="mt-0.5 accent-emerald-600" />
-        J'accepte d'être recontacté par NeoTravel au sujet de ma demande (RGPD).
+      <label style={{ marginTop: 12, display: "flex", alignItems: "flex-start", gap: 8, fontSize: "0.78rem", color: "var(--ink-soft)" }}>
+        <input
+          type="checkbox"
+          checked={f.consent}
+          onChange={(e) => setF({ ...f, consent: e.target.checked })}
+          style={{ marginTop: 2, accentColor: "var(--green)" }}
+        />
+        J&apos;accepte d&apos;être recontacté par NeoTravel au sujet de ma demande (RGPD).
       </label>
       <button
         disabled={!ok}
@@ -154,7 +180,8 @@ function ContactForm({ onSubmit }: { onSubmit: (t: string) => void }) {
             `Voici mes coordonnées — Prénom : ${f.prenom.trim()} · Nom : ${f.nom.trim()} · Email : ${f.email.trim()} · Téléphone : ${f.telephone.trim()} · Consentement RGPD : oui`
           );
         }}
-        className="mt-3 w-full rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-40"
+        className="lp-btn lp-btn-primary"
+        style={{ marginTop: 14, width: "100%" }}
       >
         Envoyer mes coordonnées
       </button>
@@ -164,29 +191,13 @@ function ContactForm({ onSubmit }: { onSubmit: (t: string) => void }) {
 
 function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-[0.7rem] font-medium uppercase tracking-wide text-slate-400">{label}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-emerald-500"
-      />
+    <label>
+      <span>{label}</span>
+      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
 }
 
 function Bubble({ role, children }: { role: "user" | "assistant"; children: React.ReactNode }) {
-  const mine = role === "user";
-  return (
-    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[82%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm leading-relaxed ${
-          mine ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-800"
-        }`}
-      >
-        {children}
-      </div>
-    </div>
-  );
+  return <div className={role === "user" ? "lp-bubble lp-bubble-me" : "lp-bubble lp-bubble-bot"}>{children}</div>;
 }

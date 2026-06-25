@@ -7,6 +7,7 @@ import { MATRICES_DEFAUT } from "@/lib/pricing/calculer-devis";
 import { SCORING } from "@/lib/pipeline/scoring";
 import { resendConfigured } from "@/lib/email/resend";
 import { studioConfigured } from "@/lib/studio/config";
+import { getRelancesCadence } from "@/lib/config/app-config";
 
 // ── Types sérialisables (passés au composant client) ────────────────────────
 export type IconName = "chat" | "gauge" | "users" | "phone" | "file" | "bell" | "chart";
@@ -14,7 +15,8 @@ export type Section =
   | { type: "note"; text: string }
   | { type: "kv"; title?: string; rows: { k: string; v: string }[] }
   | { type: "table"; title?: string; columns: string[]; rows: string[][] }
-  | { type: "code"; title?: string; text: string };
+  | { type: "code"; title?: string; text: string }
+  | { type: "cadence"; title?: string; offsets: number[] };
 
 export interface Brick {
   key: string;
@@ -46,6 +48,7 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
   const comms = (commsData ?? []) as { nom: string; specialites: string[] | null; commissions_cumulees: number; charge_courante: number }[];
   const resend = resendConfigured();
   const studio = studioConfigured().ok;
+  const cadence = await getRelancesCadence(sb);
   const M = MATRICES_DEFAUT;
 
   // Coefficient saison condensé (regroupe les mois par coeff).
@@ -242,15 +245,14 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
         { label: "En retard", value: map.relances.overdue },
       ],
       sections: [
-        { type: "note", text: "Relances email automatiques jusqu'à conversion ou clôture. Une relance J+3 est planifiée à l'envoi du devis." },
+        { type: "note", text: "Relances email automatiques planifiées à l'envoi du devis, jusqu'à conversion ou clôture. La cadence est modifiable ci-dessous (variable lue par le code)." },
+        { type: "cadence", title: "Cadence des relances — jours après l'envoi", offsets: cadence },
         {
           type: "kv",
-          title: "Cadence & envoi",
+          title: "Envoi",
           rows: [
-            { k: "Cadence prévue", v: "J+1 (urgent) · J+3 (standard) · J+7" },
-            { k: "Implémenté", v: "J+3 à l'envoi du devis" },
             { k: "Fournisseur email", v: "Resend" },
-            { k: "Déclencheur", v: "Vercel Cron (à activer)" },
+            { k: "Déclencheur d'envoi", v: "Vercel Cron (à activer)" },
             { k: "Statut Resend", v: resend ? "connecté" : "à connecter" },
           ],
         },

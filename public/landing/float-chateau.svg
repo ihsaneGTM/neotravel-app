@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="336" height="420" viewBox="0 0 336 420">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c5613f"/>
+      <stop offset="1" stop-color="#8f3f26"/>
+    </linearGradient>
+    <radialGradient id="s" cx="0.3" cy="0.2" r="0.9">
+      <stop offset="0" stop-color="#f3d9a6" stop-opacity="0.55"/>
+      <stop offset="0.6" stop-color="#f3d9a6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2"/><feColorMatrix type="saturate" values="0"/></filter>
+  </defs>
+  <rect width="336" height="420" fill="url(#g)"/>
+  <rect width="336" height="420" fill="url(#s)"/>
+  <rect width="336" height="420" filter="url(#n)" opacity="0.06"/>
+  <g transform="translate(168,200)" fill="none" stroke="#faf6ee" stroke-opacity="0.92" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-40,28 L-40,-8 L-28,-8 L-28,-20 L-20,-20 L-20,-8 L20,-8 L20,-20 L28,-20 L28,-8 L40,-8 L40,28 Z"/><path d="M-10,28 L-10,6 L10,6 L10,28"/>
+  </g>
+  <text x="168" y="394" text-anchor="middle" font-family="Georgia, serif" font-size="17" fill="#faf6ee" font-style="italic">Châteaux</text>
+  <text x="168" y="411" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" letter-spacing="1.5" fill="#faf6ee" opacity="0.7">VAL DE LOIRE</text>
+</svg>

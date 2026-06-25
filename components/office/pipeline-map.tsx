@@ -7,6 +7,7 @@ import {
   Plus, Minus, Maximize2, ArrowUpRight, X, Waypoints, Webhook, Plug, type LucideIcon,
 } from "lucide-react";
 import type { Brick, IconName, Section } from "@/lib/workflow/bricks";
+import { setRelancesCadence } from "@/app/(office)/workflow/actions";
 
 const ICONS: Record<IconName, LucideIcon> = {
   chat: MessageSquare, gauge: Gauge, users: Users, phone: PhoneCall, file: FileText, bell: Bell, chart: BarChart3,
@@ -268,8 +269,38 @@ function BrickDetail({ brick: b }: { brick: Brick }) {
   );
 }
 
+function CadenceEditor({ offsets, title }: { offsets: number[]; title?: string }) {
+  const [list, setList] = useState<number[]>(offsets);
+  const [val, setVal] = useState("");
+  const add = () => {
+    const n = parseInt(val, 10);
+    if (Number.isFinite(n) && n > 0 && !list.includes(n)) setList([...list, n].sort((a, b) => a - b));
+    setVal("");
+  };
+  return (
+    <form action={setRelancesCadence}>
+      {title && <p className="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-slate-400">{title}</p>}
+      <input type="hidden" name="offsets" value={list.join(",")} />
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--line)] p-2.5">
+        {list.map((n) => (
+          <span key={n} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">
+            J+{n}
+            <button type="button" onClick={() => setList(list.filter((x) => x !== n))} className="text-indigo-400 hover:text-indigo-700"><X className="h-3 w-3" /></button>
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1">
+          <input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} type="number" min={1} placeholder="J+" className="w-14 rounded-lg border border-[var(--line)] px-2 py-1 text-xs outline-none" />
+          <button type="button" onClick={add} className="grid h-6 w-6 place-items-center rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200"><Plus className="h-3.5 w-3.5" /></button>
+        </span>
+      </div>
+      <button type="submit" className="nt-press mt-2 w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Enregistrer la cadence</button>
+    </form>
+  );
+}
+
 function SectionView({ s }: { s: Section }) {
   if (s.type === "note") return <p className="text-sm leading-relaxed text-slate-600">{s.text}</p>;
+  if (s.type === "cadence") return <CadenceEditor offsets={s.offsets} title={s.title} />;
   if (s.type === "kv")
     return (
       <div>
