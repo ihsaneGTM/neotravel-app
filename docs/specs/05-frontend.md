@@ -1,3 +1,5 @@
+> **⚠️ MISE À JOUR (décision produit) :** le chat **n'affiche aucun prix ni estimation** au prospect (le devis est communiqué par le commercial après son rappel). Les composants `EstimationCard` / « fourchette indicative » décrits ci-dessous sont **caducs**. L'estimation reste interne (score panier pour l'attribution). La page **`/simulateur`** (usage interne / démo) reste le seul écran qui détaille le calcul.
+
 I have everything I need. This is a design deliverable, not a build task, so I'll return the architecture, key components, and load-bearing extracts directly. Below is the complete frontend design for NeoTravel.
 
 ---

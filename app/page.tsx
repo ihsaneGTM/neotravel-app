@@ -4,6 +4,11 @@ export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-4 py-10">
       <header className="mb-6 text-center">
+        <div className="mb-2 flex justify-end">
+          <a href="/simulateur" className="text-xs font-medium text-emerald-700 underline underline-offset-2">
+            Simulateur tarifaire →
+          </a>
+        </div>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">NeoTravel</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
           Dites-nous où vous allez — on s’occupe du reste

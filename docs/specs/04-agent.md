@@ -1,4 +1,5 @@
-The gateway lists `anthropic/claude-sonnet-4.6` as the latest Sonnet (the `.env.example` pins the older `4.5`). I have everything I need. Here is the complete agent design.
+> **⚠️ MISE À JOUR (décision produit) — l'agent ne communique AUCUN prix au prospect.**
+> Plusieurs passages ci-dessous décrivent l'ancien comportement (« annoncer l'estimation indicative TTC »). Il est **abandonné** : montrer un chiffre brut dans le chat risque de faire fuir le lead. Désormais l'agent qualifie, capte le contact et enregistre la demande ; **le devis est établi et communiqué par le commercial** lors de son rappel. L'estimation `calculer_devis()` reste calculée **côté serveur, en interne**, uniquement comme **score de panier pour l'attribution équitable** — elle n'est jamais renvoyée à l'agent ni affichée. Concrètement, le seul outil exposé à l'agent est `enregistrer_demande` (cf. `app/api/chat/route.ts`). Les sections « SIMPLE → annonce l'estimation », `EstimationCard`, `estimation_visible`, etc. sont **caduques**.
 
 ---
 

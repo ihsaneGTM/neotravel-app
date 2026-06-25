@@ -1,3 +1,5 @@
+> **⚠️ MISE À JOUR (décision produit) :** le chat **n'affiche aucun prix/estimation** au prospect — les critères d'acceptation ci-dessous qui mentionnent « annonce un TTC », `EstimationCard`, `estimation_visible` côté lead sont **caducs**. L'estimation reste interne (score panier → attribution) ; le devis est communiqué par le commercial. Seul outil exposé à l'agent : `enregistrer_demande`.
+
 État confirmé: pas de `package.json` ni de dossier `app/` encore. Le schema SQL et le moteur pricing (+ tests) existent déjà. Voici le plan de build unifié.
 
 ---

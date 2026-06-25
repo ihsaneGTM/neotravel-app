@@ -1,3 +1,5 @@
+> **⚠️ MISE À JOUR (décision produit) :** le résultat de `calculer_devis()` n'est **jamais montré au prospect** dans le chat. Le mode *estimation* sert uniquement, en interne, de **score de panier pour l'attribution** ; le devis est établi et communiqué par le commercial. La logique de calcul ci-dessous reste valable telle quelle — seul change le fait qu'aucun montant n'est exposé côté lead.
+
 Livrable terminé. Les 2 fichiers compilent et **les 20 tests vitest passent** (vérifié dans un projet jetable avec vitest+typescript).
 
 ## (1) Moteur — `/Users/ihsane/Documents/Agents/Neotravel/neotravel-app/lib/pricing/calculer-devis.ts`
