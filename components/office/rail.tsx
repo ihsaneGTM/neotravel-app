@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   MessageSquare,
   Workflow,
+  Wand2,
 } from "lucide-react";
 
 // Pages d'usage quotidien (commerciaux)
@@ -63,9 +64,10 @@ export function Rail() {
 
       {/* Configuration (growth / ops) — dissociée du quotidien */}
       <div className="mx-3 border-t border-[var(--line-2)]" />
-      <div className="px-3 py-3">
+      <div className="space-y-1 px-3 py-3">
         {!collapsed && <p className="mb-1 px-3 text-[0.65rem] font-semibold uppercase tracking-wider text-slate-300">Configuration</p>}
         {item("/workflow", "Workflow", Workflow)}
+        {item("/studio", "Studio", Wand2)}
       </div>
 
       {/* Footer */}
