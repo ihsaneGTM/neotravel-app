@@ -18,6 +18,7 @@ export const TypePrestation = z.enum([
 export const TypeClient = z.enum(["particulier", "asso", "collectivite", "entreprise"]);
 
 export const ContactSchema = z.object({
+  prenom: z.string().optional(),
   nom: z.string().optional(),
   email: z.string().optional(),
   telephone: z.string().optional(),

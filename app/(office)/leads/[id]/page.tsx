@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { ArrowLeft, Sparkles, MapPin, Users, Calendar, Phone, Mail, ArrowRight, Zap } from "lucide-react";
+import { ArrowLeft, Sparkles, MapPin, Users, Calendar, Phone, Mail, ArrowRight, Zap, Send, CircleCheck } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { computeScore, niveauUrgence } from "@/lib/pipeline/scoring";
 import { STATUTS, STATUT_LABEL, type Statut } from "@/lib/ui/statuts";
-import { eur, eur2 } from "@/lib/ui/format";
+import { eur, eur2, depuis } from "@/lib/ui/format";
+import { resendConfigured } from "@/lib/email/resend";
 import { Panel, StatusBadge, UrgenceBadge, ScorePill } from "@/components/office/ui";
 import { ScoreBar } from "@/components/office/charts";
-import { avancerStatut, genererDevisFerme } from "@/app/commercial/actions";
+import { avancerStatut, genererDevisFerme, envoyerDevis } from "@/app/commercial/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -29,17 +30,34 @@ type Demande = {
   complexite: string;
   distance_km: number | null;
   valeur_panier_estimee: number | null;
-  clients: { nom: string; email: string | null; telephone: string | null; consentement_rgpd: boolean } | null;
+  clients: { prenom: string | null; nom: string; email: string | null; telephone: string | null; consentement_rgpd: boolean } | null;
   commerciaux: { nom: string; email: string } | null;
 };
-type Devis = { id: string; type: string; prix_ht: number; tva: number; prix_ttc: number; lignes: { libelle: string; montant: number }[]; created_at: string };
+type Devis = {
+  id: string;
+  type: string;
+  prix_ht: number;
+  tva: number;
+  prix_ttc: number;
+  lignes: { libelle: string; montant: number }[];
+  created_at: string;
+  envoye_at: string | null;
+  resend_id: string | null;
+  destinataire: string | null;
+  numero: string | null;
+};
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [{ data: dRaw }, { data: devisRaw }] = await Promise.all([
-    supabaseAdmin.from("demandes").select("*, clients(nom, email, telephone, consentement_rgpd), commerciaux(nom, email)").eq("id", id).single(),
-    supabaseAdmin.from("devis").select("id, type, prix_ht, tva, prix_ttc, lignes, created_at").eq("demande_id", id).order("created_at", { ascending: false }),
+    supabaseAdmin.from("demandes").select("*, clients(prenom, nom, email, telephone, consentement_rgpd), commerciaux(nom, email)").eq("id", id).single(),
+    supabaseAdmin
+      .from("devis")
+      .select("id, type, prix_ht, tva, prix_ttc, lignes, created_at, envoye_at, resend_id, destinataire, numero")
+      .eq("demande_id", id)
+      .order("created_at", { ascending: false }),
   ]);
+  const emailConfigure = resendConfigured();
 
   if (!dRaw) {
     return (
@@ -53,6 +71,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const devisList = (devisRaw ?? []) as unknown as Devis[];
   const devis = devisList.find((v) => v.type === "ferme") ?? devisList[0] ?? null;
   const trajet = d.ville_arrivee ? `${d.ville_depart} → ${d.ville_arrivee}` : d.ville_depart;
+  const clientNom = [d.clients?.prenom, d.clients?.nom].filter(Boolean).join(" ") || "Prospect";
   const s = computeScore({
     valeur_panier_estimee: d.valeur_panier_estimee,
     nb_voyageurs: d.nb_voyageurs,
@@ -85,7 +104,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900">{d.clients?.nom ?? "Prospect"}</h1>
+              <h1 className="text-xl font-bold text-slate-900">{clientNom}</h1>
               <StatusBadge statut={d.statut} />
               <UrgenceBadge niveau={urgence} />
             </div>
@@ -136,7 +155,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           </Panel>
           <Panel title="Informations extraites">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
-              <Info label="Contact" value={d.clients?.nom ?? "—"} />
+              <Info label="Contact" value={clientNom} />
               <Info label="Route" value={trajet} />
               <Info label="Voyageurs" value={String(d.nb_voyageurs)} />
               <Info label="Type" value={d.type_deplacement.replace(/_/g, " ")} />
@@ -183,15 +202,17 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           <Panel title="Devis">
             <form action={genererDevisFerme}>
               <input type="hidden" name="id" value={d.id} />
-              <button className="nt-press w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700">
-                Calculer le devis ferme
+              <button className="nt-press w-full rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-medium text-indigo-700 transition-colors hover:bg-indigo-100">
+                {devis ? "Recalculer le devis ferme" : "Générer le devis ferme"}
               </button>
             </form>
-            {devis && (
+
+            {devis ? (
               <div className="mt-4 border-t border-[var(--line)] pt-4">
+                {/* Aperçu */}
                 <div className="flex items-baseline justify-between">
-                  <span className="text-xs uppercase tracking-wide text-slate-400">{devis.type}</span>
-                  <span className="text-2xl font-bold text-indigo-600">{eur2(devis.prix_ttc)}</span>
+                  <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{devis.numero ?? "Aperçu du devis"}</span>
+                  <span className="text-2xl font-bold text-slate-900">{eur2(devis.prix_ttc)}</span>
                 </div>
                 <table className="mt-2 w-full text-xs">
                   <tbody>
@@ -206,7 +227,38 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                     })}
                   </tbody>
                 </table>
+
+                {/* Envoi / preuve */}
+                <div className="mt-4 border-t border-[var(--line)] pt-4">
+                  {devis.envoye_at ? (
+                    <div className="rounded-xl bg-emerald-50 p-3">
+                      <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
+                        <CircleCheck className="h-4 w-4" /> Devis envoyé {depuis(devis.envoye_at)}
+                      </p>
+                      <p className="mt-1 text-xs text-emerald-700/80">à {devis.destinataire}</p>
+                      {devis.resend_id && (
+                        <p className="mt-1 font-mono text-[0.65rem] text-emerald-700/60">preuve Resend : {devis.resend_id}</p>
+                      )}
+                    </div>
+                  ) : emailConfigure && d.clients?.email ? (
+                    <form action={envoyerDevis}>
+                      <input type="hidden" name="id" value={d.id} />
+                      <p className="mb-2 text-xs text-slate-500">Prêt à envoyer — non encore transmis au client.</p>
+                      <button className="nt-press flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700">
+                        <Send className="h-4 w-4" /> Envoyer le devis à {d.clients.email}
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-[var(--line-2)] p-3 text-xs text-slate-400">
+                      {!d.clients?.email
+                        ? "Aucun email client : impossible d'envoyer le devis."
+                        : "Envoi indisponible : RESEND_API_KEY non configurée (ajoutez-la dans .env.local et sur Vercel)."}
+                    </div>
+                  )}
+                </div>
               </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-400">Générez le devis pour le prévisualiser, puis l'envoyer au client.</p>
             )}
           </Panel>
         </div>

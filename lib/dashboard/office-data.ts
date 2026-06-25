@@ -20,12 +20,14 @@ export interface DemandeRow {
   budget_indicatif: number | null;
   valeur_panier_estimee: number | null;
   created_at: string;
-  clients: { nom: string; email: string | null; telephone: string | null } | null;
+  clients: { prenom: string | null; nom: string; email: string | null; telephone: string | null } | null;
   commerciaux: { nom: string } | null;
 }
 
 const SELECT =
-  "id, statut, canal, type_prestation, complexite, ville_depart, ville_arrivee, nb_voyageurs, date_depart, date_demande, date_retour, options, commentaire, budget_indicatif, valeur_panier_estimee, created_at, clients(nom, email, telephone), commerciaux(nom)";
+  "id, statut, canal, type_prestation, complexite, ville_depart, ville_arrivee, nb_voyageurs, date_depart, date_demande, date_retour, options, commentaire, budget_indicatif, valeur_panier_estimee, created_at, clients(prenom, nom, email, telephone), commerciaux(nom)";
+
+const nomClient = (d: DemandeRow) => [d.clients?.prenom, d.clients?.nom].filter(Boolean).join(" ") || "Prospect";
 
 export async function fetchDemandes(sb: SupabaseClient): Promise<DemandeRow[]> {
   const { data } = await sb.from("demandes").select(SELECT).order("created_at", { ascending: false });
@@ -63,6 +65,7 @@ export interface DashboardData {
   by_canal: { label: string; value: number }[];
   opportunities: { id: string; client: string; trajet: string; urgence: string; score: number }[];
   upcoming: { id: string; objet: string; commercial: string | null; statut: string }[];
+  a_envoyer: { demande_id: string; client: string; trajet: string; prix_ttc: number }[];
 }
 
 export interface LeadListItem {
@@ -86,7 +89,7 @@ export async function getLeads(sb: SupabaseClient): Promise<LeadListItem[]> {
   const demandes = await fetchDemandes(sb);
   return demandes.map((d) => ({
     id: d.id,
-    client: d.clients?.nom ?? "Prospect",
+    client: nomClient(d),
     contact: d.clients?.telephone ?? d.clients?.email ?? null,
     statut: d.statut,
     urgence: niveauUrgence(d.date_depart, d.date_demande),
@@ -154,10 +157,16 @@ const CANAL_LABEL: Record<string, string> = {
 };
 
 export async function getDashboard(sb: SupabaseClient): Promise<DashboardData> {
-  const [demandes, devisRes, relancesRes] = await Promise.all([
+  const [demandes, devisRes, relancesRes, aEnvoyerRes] = await Promise.all([
     fetchDemandes(sb),
     sb.from("devis").select("id", { count: "exact", head: true }),
     sb.from("relances").select("id, statut, objet, planifiee_pour").order("planifiee_pour", { ascending: true }),
+    sb
+      .from("devis")
+      .select("demande_id, prix_ttc, created_at, demandes(ville_depart, ville_arrivee, clients(prenom, nom))")
+      .eq("type", "ferme")
+      .is("envoye_at", null)
+      .order("created_at", { ascending: false }),
   ]);
 
   const counts = Object.fromEntries(STATUTS.map((s) => [s, 0])) as Record<Statut, number>;
@@ -189,7 +198,7 @@ export async function getDashboard(sb: SupabaseClient): Promise<DashboardData> {
   const opportunities = active
     .map((d) => ({
       id: d.id,
-      client: d.clients?.nom ?? "Prospect",
+      client: nomClient(d),
       trajet: trajet(d),
       urgence: niveauUrgence(d.date_depart, d.date_demande),
       score: scoreOf(d),
@@ -203,6 +212,23 @@ export async function getDashboard(sb: SupabaseClient): Promise<DashboardData> {
     commercial: null as string | null,
     statut: r.statut,
   }));
+
+  // Devis ferme générés mais PAS encore envoyés (à prévisualiser puis envoyer).
+  const aEnvoyerRows = (aEnvoyerRes.data ?? []) as unknown as {
+    demande_id: string;
+    prix_ttc: number;
+    demandes: { ville_depart: string; ville_arrivee: string | null; clients: { prenom: string | null; nom: string | null } | null } | null;
+  }[];
+  const seen = new Set<string>();
+  const a_envoyer = aEnvoyerRows
+    .filter((r) => (seen.has(r.demande_id) ? false : seen.add(r.demande_id)))
+    .slice(0, 6)
+    .map((r) => ({
+      demande_id: r.demande_id,
+      client: [r.demandes?.clients?.prenom, r.demandes?.clients?.nom].filter(Boolean).join(" ") || "Prospect",
+      trajet: r.demandes?.ville_arrivee ? `${r.demandes.ville_depart} → ${r.demandes.ville_arrivee}` : r.demandes?.ville_depart ?? "—",
+      prix_ttc: Number(r.prix_ttc) || 0,
+    }));
 
   return {
     total: demandes.length,
@@ -218,5 +244,6 @@ export async function getDashboard(sb: SupabaseClient): Promise<DashboardData> {
     by_canal,
     opportunities,
     upcoming,
+    a_envoyer,
   };
 }

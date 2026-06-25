@@ -10,6 +10,7 @@ import {
   Clock,
   TriangleAlert,
   ArrowUpRight,
+  Send,
 } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getDashboard } from "@/lib/dashboard/office-data";
@@ -109,6 +110,32 @@ export default async function DashboardPage() {
             </ul>
           ) : (
             <p className="py-8 text-center text-sm text-slate-400">Aucune relance planifiée.</p>
+          )}
+        </Panel>
+      </div>
+
+      {/* Devis prêts à envoyer (preview avant envoi) */}
+      <div className="mt-6">
+        <Panel title="Devis prêts à envoyer" icon={Send}>
+          {d.a_envoyer.length ? (
+            <ul className="divide-y divide-[var(--line)]">
+              {d.a_envoyer.map((q) => (
+                <li key={q.demande_id}>
+                  <Link href={`/leads/${q.demande_id}`} className="flex items-center gap-3 py-2.5 transition-colors hover:bg-slate-50/60">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-800">{q.client}</p>
+                      <p className="truncate text-xs text-slate-400">{q.trajet}</p>
+                    </div>
+                    <span className="font-semibold text-slate-900">{eur(q.prix_ttc)}</span>
+                    <span className="flex items-center gap-1 text-xs font-medium text-indigo-600">
+                      Prévisualiser & envoyer <ArrowUpRight className="h-3.5 w-3.5" />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="py-8 text-center text-sm text-slate-400">Aucun devis en attente d'envoi.</p>
           )}
         </Panel>
       </div>

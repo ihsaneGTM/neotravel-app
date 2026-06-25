@@ -26,7 +26,7 @@ export interface DemandeInput {
   distance_km?: number | null;
   valeur_panier_estimee?: number | null;
   complexite?: string;
-  contact?: { nom?: string; email?: string; telephone?: string; consentement_rgpd?: boolean };
+  contact?: { prenom?: string; nom?: string; email?: string; telephone?: string; consentement_rgpd?: boolean };
 }
 
 /** Crée (si contact fourni) un client puis la demande. Le trigger journalise le statut 'new'. */
@@ -36,10 +36,12 @@ export async function creerClientEtDemande(
 ): Promise<{ demande_id: string; client_id: string | null }> {
   let client_id: string | null = null;
   const c = input.contact;
-  if (c && (c.email || c.telephone || c.nom)) {
+  // On exige au moins un MOYEN DE CONTACT réel (email ou téléphone) pour créer un client.
+  if (c && (c.email || c.telephone)) {
     const { data: cli, error } = await sb
       .from("clients")
       .insert({
+        prenom: c.prenom ?? null,
         nom: c.nom ?? "Prospect",
         email: c.email ?? null,
         telephone: c.telephone ?? null,
