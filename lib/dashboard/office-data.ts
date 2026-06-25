@@ -68,6 +68,92 @@ export interface DashboardData {
   a_envoyer: { demande_id: string; client: string; trajet: string; prix_ttc: number }[];
 }
 
+export interface AnalyticsData {
+  total: number;
+  pipeline_value: number;
+  win_rate: number | null;
+  avg_score: number;
+  quotes_sent: number;
+  funnel: { label: string; value: number; note: string }[];
+  sources: { label: string; value: number }[];
+  score_dist: { label: string; value: number }[];
+  by_purpose: { label: string; value: number; hex: string }[];
+  team: { nom: string; leads: number; pipeline: number; avg: number }[];
+}
+
+const PURPOSE_HEX = ["#4f46e5", "#10b981", "#0ea5e9", "#f59e0b", "#8b5cf6", "#f43f5e", "#64748b"];
+const PRESTATION_LABEL: Record<string, string> = {
+  transfert: "Transfert",
+  navette: "Navette",
+  scolaire: "Scolaire",
+  seminaire: "Séminaire",
+  tourisme: "Tourisme",
+  mise_a_disposition: "Mise à disposition",
+};
+
+export async function getAnalytics(sb: SupabaseClient): Promise<AnalyticsData> {
+  const [demandes, devisRes, commsRes] = await Promise.all([
+    fetchDemandes(sb),
+    sb.from("devis").select("id", { count: "exact", head: true }),
+    sb.from("commerciaux").select("id, nom"),
+  ]);
+  const total = demandes.length;
+  const counts = Object.fromEntries(STATUTS.map((s) => [s, 0])) as Record<Statut, number>;
+  for (const d of demandes) if (counts[d.statut] != null) counts[d.statut]++;
+
+  const order: Statut[] = ["new", "qualified", "contacted", "quote_sent", "negotiation", "won"];
+  const rank = (s: Statut) => order.indexOf(s); // lost => -1
+  const reached = (stage: Statut) => demandes.filter((d) => rank(d.statut) >= rank(stage)).length;
+  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+  const funnel = [
+    { label: "Tous les leads", value: total, note: `${total} (100%)` },
+    { label: "Qualifiés", value: reached("qualified"), note: `${reached("qualified")} (${pct(reached("qualified"))}%)` },
+    { label: "Contactés", value: reached("contacted"), note: `${reached("contacted")} (${pct(reached("contacted"))}%)` },
+    { label: "Devis envoyé", value: reached("quote_sent"), note: `${reached("quote_sent")} (${pct(reached("quote_sent"))}%)` },
+    { label: "Gagnés", value: counts.won, note: `${counts.won} (${pct(counts.won)}%)` },
+  ];
+
+  const pipeline_value = demandes.filter((d) => d.statut !== "won" && d.statut !== "lost").reduce((s, d) => s + (Number(d.valeur_panier_estimee) || 0), 0);
+  const scores = demandes.map(scoreOf);
+  const avg_score = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  const win_rate = counts.won + counts.lost === 0 ? null : Math.round((counts.won / (counts.won + counts.lost)) * 100);
+
+  const canalMap = new Map<string, number>();
+  for (const d of demandes) canalMap.set(d.canal, (canalMap.get(d.canal) ?? 0) + 1);
+  const sources = [...canalMap.entries()].map(([k, v]) => ({ label: CANAL_LABEL[k] ?? k, value: v }));
+
+  const buckets = [0, 0, 0, 0];
+  for (const sc of scores) buckets[sc >= 76 ? 3 : sc >= 51 ? 2 : sc >= 26 ? 1 : 0]++;
+  const score_dist = [
+    { label: "0-25", value: buckets[0] },
+    { label: "26-50", value: buckets[1] },
+    { label: "51-75", value: buckets[2] },
+    { label: "76-100", value: buckets[3] },
+  ];
+
+  const purposeMap = new Map<string, number>();
+  for (const d of demandes) purposeMap.set(d.type_prestation, (purposeMap.get(d.type_prestation) ?? 0) + 1);
+  const by_purpose = [...purposeMap.entries()].map(([k, v], i) => ({ label: PRESTATION_LABEL[k] ?? k, value: v, hex: PURPOSE_HEX[i % PURPOSE_HEX.length] }));
+
+  const comms = (commsRes.data ?? []) as { id: string; nom: string }[];
+  // Agrégat par nom de commercial (le select demandes ramène commerciaux(nom)).
+  const byNom = new Map<string, { leads: number; pipeline: number }>();
+  for (const d of demandes) {
+    const nom = d.commerciaux?.nom ?? "Non attribué";
+    const cur = byNom.get(nom) ?? { leads: 0, pipeline: 0 };
+    cur.leads++;
+    cur.pipeline += Number(d.valeur_panier_estimee) || 0;
+    byNom.set(nom, cur);
+  }
+  // Inclure les commerciaux sans lead.
+  for (const c of comms) if (!byNom.has(c.nom)) byNom.set(c.nom, { leads: 0, pipeline: 0 });
+  const team = [...byNom.entries()]
+    .map(([nom, v]) => ({ nom, leads: v.leads, pipeline: v.pipeline, avg: v.leads ? Math.round(v.pipeline / v.leads) : 0 }))
+    .sort((a, b) => b.pipeline - a.pipeline);
+
+  return { total, pipeline_value, win_rate, avg_score, quotes_sent: devisRes.count ?? 0, funnel, sources, score_dist, by_purpose, team };
+}
+
 export interface LeadListItem {
   id: string;
   client: string;
