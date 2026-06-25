@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { useEffect, useRef, useState } from "react";
+import { Rich } from "@/components/ui/rich-text";
 
 /** Marqueurs émis par l'agent pour afficher des éléments interactifs. */
 function parseMarkers(text: string) {
@@ -199,5 +200,9 @@ function Field({ label, value, onChange, type = "text" }: { label: string; value
 }
 
 function Bubble({ role, children }: { role: "user" | "assistant"; children: React.ReactNode }) {
-  return <div className={role === "user" ? "lp-bubble lp-bubble-me" : "lp-bubble lp-bubble-bot"}>{children}</div>;
+  return (
+    <div className={role === "user" ? "lp-bubble lp-bubble-me" : "lp-bubble lp-bubble-bot"}>
+      {typeof children === "string" ? <Rich text={children} /> : children}
+    </div>
+  );
 }

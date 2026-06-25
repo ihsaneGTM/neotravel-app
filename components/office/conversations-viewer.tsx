@@ -5,16 +5,28 @@ import Link from "next/link";
 import { MessageSquare, UserRound, ShieldQuestion, PhoneCall, ArrowUpRight } from "lucide-react";
 import type { ConversationItem } from "@/lib/dashboard/office-data";
 import { depuis } from "@/lib/ui/format";
+import { Rich } from "@/components/ui/rich-text";
 
 type Filtre = "all" | "a_rappeler" | "anonymes" | "terminee";
 
-function cleanText(t: string) {
-  return t
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("::"))
-    .join("\n")
-    .trim();
+/** Sépare le texte affichable des marqueurs interactifs (QCM / formulaire). */
+function parseMarkers(text: string) {
+  let choices: { question: string; options: string[] } | null = null;
+  let contact = false;
+  const kept: string[] = [];
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (t.startsWith("::choices::")) {
+      const [q, opts] = t.slice("::choices::".length).trim().split("||");
+      const options = (opts ?? "").split("|").map((s) => s.trim()).filter(Boolean);
+      if (options.length) choices = { question: (q ?? "").trim(), options };
+    } else if (t.startsWith("::contact::")) {
+      contact = true;
+    } else {
+      kept.push(line);
+    }
+  }
+  return { display: kept.join("\n").trim(), choices, contact };
 }
 
 function statutMeta(s: string) {
@@ -117,14 +129,27 @@ export function ConversationsViewer({ conversations }: { conversations: Conversa
             <div className="nt-scroll flex-1 space-y-3 overflow-y-auto bg-slate-50/40 p-5">
               {current.transcript.length === 0 && <p className="text-center text-sm text-slate-400">Transcript vide.</p>}
               {current.transcript.map((msg, i) => {
-                const text = cleanText(msg.text);
-                if (!text) return null;
-                const mine = msg.role === "user";
-                return (
-                  <div key={i} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[78%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${mine ? "bg-indigo-600 text-white" : "bg-white text-slate-700 shadow-sm"}`}>
-                      {text}
+                if (msg.role === "user") {
+                  const t = msg.text.trim();
+                  if (!t) return null;
+                  return (
+                    <div key={i} className="flex justify-end">
+                      <div className="max-w-[78%] rounded-2xl bg-indigo-600 px-3.5 py-2 text-sm leading-relaxed text-white"><Rich text={t} /></div>
                     </div>
+                  );
+                }
+                const { display, choices, contact } = parseMarkers(msg.text);
+                if (!display && !choices && !contact) return null;
+                return (
+                  <div key={i} className="flex flex-col items-start gap-1.5">
+                    {display && <div className="max-w-[78%] rounded-2xl bg-white px-3.5 py-2 text-sm leading-relaxed text-slate-700 shadow-sm"><Rich text={display} /></div>}
+                    {choices && (
+                      <div className="max-w-[80%] rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 px-3 py-2">
+                        <p className="mb-1.5 text-[0.7rem] font-medium text-indigo-500">Choix proposés{choices.question ? ` · ${choices.question}` : ""}</p>
+                        <div className="flex flex-wrap gap-1.5">{choices.options.map((o) => <span key={o} className="rounded-full bg-white px-2.5 py-1 text-xs text-slate-600 shadow-sm">{o}</span>)}</div>
+                      </div>
+                    )}
+                    {contact && <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/50 px-3 py-1.5 text-[0.7rem] font-medium text-emerald-600">🧾 Formulaire de coordonnées proposé</div>}
                   </div>
                 );
               })}
