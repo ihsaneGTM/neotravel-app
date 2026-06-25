@@ -44,6 +44,8 @@ export function PipelineMap({ bricks }: { bricks: Brick[] }) {
     const el = wrap.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      // Au-dessus d'un élément d'UI (drawer, toolbar) → on laisse le scroll natif (pas de pan/zoom).
+      if ((e.target as HTMLElement)?.closest?.("[data-ui]")) return;
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         const r = el.getBoundingClientRect();

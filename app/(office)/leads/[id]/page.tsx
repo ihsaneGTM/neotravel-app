@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Sparkles, MapPin, Users, Calendar, Phone, Mail, ArrowRight, Zap, Send, CircleCheck } from "lucide-react";
+import { ArrowLeft, Sparkles, MapPin, Users, Calendar, Phone, Mail, ArrowRight, Zap, Send, CircleCheck, PhoneCall } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { computeScore, niveauUrgence } from "@/lib/pipeline/scoring";
 import { STATUTS, STATUT_LABEL, type Statut } from "@/lib/ui/statuts";
@@ -50,15 +50,17 @@ type Devis = {
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [{ data: dRaw }, { data: devisRaw }] = await Promise.all([
+  const [{ data: dRaw }, { data: devisRaw }, { data: appelsRaw }] = await Promise.all([
     supabaseAdmin.from("demandes").select("*, clients(prenom, nom, email, telephone, consentement_rgpd), commerciaux(nom, email)").eq("id", id).single(),
     supabaseAdmin
       .from("devis")
       .select("id, type, prix_ht, tva, prix_ttc, lignes, created_at, envoye_at, resend_id, destinataire, numero")
       .eq("demande_id", id)
       .order("created_at", { ascending: false }),
+    supabaseAdmin.from("appels").select("id, transcript, resume, duree_sec, source, created_at").eq("demande_id", id).order("created_at", { ascending: false }),
   ]);
   const emailConfigure = resendConfigured();
+  const appels = (appelsRaw ?? []) as { id: string; transcript: string | null; resume: string | null; duree_sec: number | null; source: string; created_at: string }[];
 
   if (!dRaw) {
     return (
@@ -168,6 +170,25 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               <Info label="Canal" value={d.canal.replace(/_/g, " ")} />
             </dl>
           </Panel>
+
+          {appels.length > 0 && (
+            <Panel title="Appels" icon={PhoneCall}>
+              <div className="space-y-3">
+                {appels.map((a) => (
+                  <div key={a.id} className="rounded-xl bg-slate-50 p-3.5">
+                    <div className="mb-1.5 flex items-center justify-between text-xs text-slate-400">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">{a.source === "simulation" ? "simulation (démo)" : a.source}</span>
+                        {a.duree_sec ? `${Math.floor(a.duree_sec / 60)} min ${a.duree_sec % 60}s` : ""}
+                      </span>
+                      <span>{new Date(a.created_at).toLocaleString("fr-FR")}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{a.transcript}</p>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          )}
         </div>
 
         {/* Actions */}

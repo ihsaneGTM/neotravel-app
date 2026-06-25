@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, List, LayoutGrid, MapPin, Users, Calendar, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Search, List, LayoutGrid, MapPin, Users, Calendar, Sparkles, PhoneCall, Loader2 } from "lucide-react";
 import type { LeadListItem } from "@/lib/dashboard/office-data";
 import { STATUTS, STATUT_LABEL, STATUT_META, type Statut } from "@/lib/ui/statuts";
 import { eur } from "@/lib/ui/format";
@@ -171,26 +172,64 @@ function Kanban({ leads }: { leads: LeadListItem[] }) {
                 </div>
               )}
               {col.map((l) => (
-                <Link key={l.id} href={`/leads/${l.id}`} className="nt-card nt-lift block p-3.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-semibold text-slate-900">{l.client}</span>
-                    <ScorePill score={l.score} />
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                    <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {l.trajet}</span>
-                    <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {l.nb_voyageurs}</span>
-                  </div>
-                  <p className="mt-2 line-clamp-2 text-xs text-slate-500">{l.resume}</p>
-                  <div className="mt-2.5 flex items-center justify-between">
-                    <UrgenceBadge niveau={l.urgence} />
-                    <span className="text-sm font-semibold text-slate-800">{l.valeur != null ? eur(l.valeur) : "—"}</span>
-                  </div>
-                </Link>
+                <div key={l.id} className="space-y-1.5">
+                  <Link href={`/leads/${l.id}`} className="nt-card nt-lift block p-3.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-sm font-semibold text-slate-900">{l.client}</span>
+                      <ScorePill score={l.score} />
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {l.trajet}</span>
+                      <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {l.nb_voyageurs}</span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-xs text-slate-500">{l.resume}</p>
+                    <div className="mt-2.5 flex items-center justify-between">
+                      <UrgenceBadge niveau={l.urgence} />
+                      <span className="text-sm font-semibold text-slate-800">{l.valeur != null ? eur(l.valeur) : "—"}</span>
+                    </div>
+                  </Link>
+                  {l.statut === "qualified" && <CallSim id={l.id} />}
+                </div>
               ))}
             </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Simulation (démo) d'appel commercial sur un lead « Qualifié » :
+// après ~10 s → génère la retranscription (clé Gateway, côté serveur) et passe en « Contacté ».
+const simTriggered = new Set<string>();
+function CallSim({ id }: { id: string }) {
+  const router = useRouter();
+  const [phase, setPhase] = useState<"call" | "transcribe" | "error">("call");
+  useEffect(() => {
+    let cancelled = false;
+    const t1 = setTimeout(() => { if (!cancelled) setPhase("transcribe"); }, 6000);
+    const t2 = setTimeout(async () => {
+      if (simTriggered.has(id)) return;
+      simTriggered.add(id);
+      try {
+        const r = await fetch("/api/appel/simuler", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ demande_id: id }) });
+        if (cancelled) return;
+        if (r.ok) router.refresh();
+        else setPhase("error");
+      } catch {
+        if (!cancelled) setPhase("error");
+      }
+    }, 10000);
+    return () => { cancelled = true; clearTimeout(t1); clearTimeout(t2); };
+  }, [id, router]);
+
+  if (phase === "error")
+    return <div className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[0.7rem] text-rose-600">Échec de la simulation d'appel.</div>;
+  return (
+    <div className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[0.7rem] font-medium text-amber-700">
+      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      <PhoneCall className="h-3 w-3" />
+      {phase === "call" ? "Appel commercial en cours… (démo)" : "Retranscription en cours… (démo)"}
     </div>
   );
 }

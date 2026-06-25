@@ -174,7 +174,8 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
         { label: "Auto", value: "Qualifié→Contacté" },
       ],
       sections: [
-        { type: "note", text: "Le commercial rappelle le prospect. L'appel est enregistré par l'outil de téléphonie ; un webhook le journalise dans le CRM et fait passer le lead de « Qualifié » à « Contacté » automatiquement." },
+        { type: "note", text: "Le commercial rappelle le prospect. L'appel est enregistré par la téléphonie ; un webhook le journalise dans le CRM et fait passer le lead de « Qualifié » à « Contacté » automatiquement." },
+        { type: "note", text: "⚠️ Mode actuel : SIMULATION (démo). Dès qu'un lead passe en « Qualifié », une retranscription d'appel est générée automatiquement (clé Vercel AI Gateway), puis le lead passe en « Contacté ». Le branchement réel Aircall/Ringover remplacera la simulation." },
         {
           type: "kv",
           title: "Intégration (webhook entrant)",
@@ -182,8 +183,8 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
             { k: "Fournisseurs", v: "Aircall · Ringover" },
             { k: "Mécanisme", v: "Webhook → table appels" },
             { k: "Effet", v: "statut Qualifié → Contacté (auto)" },
-            { k: "Endpoint", v: "/api/webhooks/appel (à connecter)" },
-            { k: "Statut", v: "à connecter" },
+            { k: "Endpoint réel", v: "/api/webhooks/appel (à connecter)" },
+            { k: "Mode actuel", v: "Simulation (démo) via /api/appel/simuler" },
           ],
         },
       ],
