@@ -1,5 +1,5 @@
 import "server-only";
-import { EDITABLE_FILES } from "./config";
+import { EDITABLE_FILES, anthropicKey } from "./config";
 import { getFile } from "./github";
 
 export interface FileChange {
@@ -35,8 +35,8 @@ function extractJson(text: string): unknown {
 }
 
 export async function proposeChange(prompt: string): Promise<Proposal> {
-  const key = process.env.STUDIO_API_KEY;
-  if (!key) throw new Error("STUDIO_API_KEY manquante.");
+  const key = anthropicKey();
+  if (!key) throw new Error("Clé Anthropic manquante (STUDIO_API_KEY).");
 
   // Contenu actuel des fichiers éditables (lu via GitHub = source de vérité, prod-safe).
   const current = await Promise.all(

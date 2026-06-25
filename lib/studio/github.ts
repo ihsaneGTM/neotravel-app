@@ -1,10 +1,10 @@
 import "server-only";
-import { GITHUB_REPO } from "./config";
+import { GITHUB_REPO, githubToken } from "./config";
 
 const API = "https://api.github.com";
 
 function headers() {
-  const token = process.env.GITHUB_TOKEN;
+  const token = githubToken();
   if (!token) throw new Error("GITHUB_TOKEN manquant : le Studio n'est pas configuré.");
   return {
     Authorization: `Bearer ${token}`,
