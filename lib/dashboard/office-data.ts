@@ -68,6 +68,53 @@ export interface DashboardData {
   a_envoyer: { demande_id: string; client: string; trajet: string; prix_ttc: number }[];
 }
 
+export interface FollowupItem {
+  id: string;
+  objet: string;
+  planifiee_pour: string;
+  statut: string;
+  type: string;
+  client: string;
+  trajet: string;
+  demande_id: string;
+  overdue: boolean;
+}
+export interface FollowupsData {
+  overdue: number;
+  pending: number;
+  completed: number;
+  items: FollowupItem[];
+}
+
+export async function getFollowups(sb: SupabaseClient): Promise<FollowupsData> {
+  const { data } = await sb
+    .from("relances")
+    .select("id, objet, planifiee_pour, statut, type, demande_id, demandes(ville_depart, ville_arrivee, clients(prenom, nom))")
+    .order("planifiee_pour", { ascending: true });
+  const rows = (data ?? []) as unknown as {
+    id: string; objet: string | null; planifiee_pour: string; statut: string; type: string; demande_id: string;
+    demandes: { ville_depart: string; ville_arrivee: string | null; clients: { prenom: string | null; nom: string | null } | null } | null;
+  }[];
+  const now = Date.now();
+  const items: FollowupItem[] = rows.map((r) => ({
+    id: r.id,
+    objet: r.objet ?? "Relance",
+    planifiee_pour: r.planifiee_pour,
+    statut: r.statut,
+    type: r.type,
+    client: [r.demandes?.clients?.prenom, r.demandes?.clients?.nom].filter(Boolean).join(" ") || "Prospect",
+    trajet: r.demandes?.ville_arrivee ? `${r.demandes.ville_depart} → ${r.demandes.ville_arrivee}` : r.demandes?.ville_depart ?? "—",
+    demande_id: r.demande_id,
+    overdue: r.statut === "planifiee" && new Date(r.planifiee_pour).getTime() < now,
+  }));
+  return {
+    overdue: items.filter((i) => i.overdue).length,
+    pending: items.filter((i) => i.statut === "planifiee").length,
+    completed: items.filter((i) => i.statut === "envoyee").length,
+    items,
+  };
+}
+
 export interface AnalyticsData {
   total: number;
   pipeline_value: number;

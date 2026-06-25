@@ -1,16 +1,22 @@
 import { Bell } from "lucide-react";
-import { Soon } from "@/components/office/soon";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getFollowups } from "@/lib/dashboard/office-data";
+import { PageHeader } from "@/components/office/ui";
 import { Shell } from "@/components/office/shell";
+import { FollowupCenter } from "@/components/office/followup-center";
 
-export default function FollowUpsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function FollowUpsPage() {
+  const data = await getFollowups(supabaseAdmin);
   return (
     <Shell>
-    <Soon
-      icon={Bell}
-      title="Smart Follow-up Center"
-      subtitle="Relances planifiées et suivi des échéances"
-      note="Le centre de relances (Vercel Cron + Resend, complétion 1-clic) arrive dans la prochaine itération."
-    />
+      <PageHeader
+        icon={Bell}
+        title="Smart Follow-up Center"
+        subtitle={`${data.pending} en attente · ${data.overdue} en retard`}
+      />
+      <FollowupCenter data={data} />
     </Shell>
   );
 }

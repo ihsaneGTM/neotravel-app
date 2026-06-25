@@ -110,5 +110,33 @@ export async function envoyerDevis(formData: FormData) {
     .update({ envoye_at: new Date().toISOString(), resend_id, destinataire: email, numero })
     .eq("id", devis.id);
   await transitionStatut(supabaseAdmin, id, "quote_sent");
+  // Planifie une relance J+3 (boucle réelle alimentant le centre de relances).
+  await supabaseAdmin.from("relances").insert({
+    demande_id: id,
+    devis_id: devis.id,
+    type: "j3",
+    statut: "planifiee",
+    planifiee_pour: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+    canal: "email",
+    destinataire: email,
+    objet: `Relance — devis ${numero}`,
+  });
   revalidateLead(id);
+  revalidatePath("/follow-ups");
+}
+
+/** Marque une relance comme effectuée. */
+export async function completerRelance(formData: FormData) {
+  const id = String(formData.get("id"));
+  await supabaseAdmin.from("relances").update({ statut: "envoyee", envoyee_at: new Date().toISOString() }).eq("id", id);
+  revalidatePath("/follow-ups");
+  revalidatePath("/dashboard");
+}
+
+/** Annule une relance planifiée. */
+export async function annulerRelance(formData: FormData) {
+  const id = String(formData.get("id"));
+  await supabaseAdmin.from("relances").update({ statut: "annulee" }).eq("id", id);
+  revalidatePath("/follow-ups");
+  revalidatePath("/dashboard");
 }
