@@ -74,7 +74,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   }
   const d = dRaw as unknown as Demande;
   const devisList = (devisRaw ?? []) as unknown as Devis[];
-  const devis = devisList.find((v) => v.type === "ferme") ?? devisList[0] ?? null;
+  // Seul le devis FERME est présentable/envoyable au client. L'estimation reste interne.
+  const devis = devisList.find((v) => v.type === "ferme") ?? null;
   const trajet = d.ville_arrivee ? `${d.ville_depart} → ${d.ville_arrivee}` : d.ville_depart;
   const clientNom = [d.clients?.prenom, d.clients?.nom].filter(Boolean).join(" ") || "Prospect";
   const s = computeScore({

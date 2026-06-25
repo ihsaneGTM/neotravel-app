@@ -22,11 +22,10 @@ export async function avancerStatut(formData: FormData) {
 }
 
 /**
- * Génère le DEVIS FERME (moteur déterministe) et le persiste — SANS l'envoyer.
- * Le statut n'est PAS passé à "Devis envoyé" : ça se fait uniquement à l'envoi réel (envoyerDevis).
+ * Calcule le DEVIS FERME (moteur déterministe) et le persiste. Réutilisé par
+ * la génération manuelle et par l'envoi (qui le crée à la volée si absent).
  */
-export async function genererDevisFerme(formData: FormData) {
-  const id = String(formData.get("id"));
+async function calculerEtEnregistrerFerme(id: string) {
   const { data: d, error } = await supabaseAdmin
     .from("demandes")
     .select("type_deplacement, ville_depart, ville_arrivee, date_depart, date_retour, nb_voyageurs, commercial_id, distance_km")
@@ -63,6 +62,15 @@ export async function genererDevisFerme(formData: FormData) {
     if (e instanceof DevisError) throw new Error(`Devis non calculable automatiquement (${e.code}) : ${e.message}`);
     throw e;
   }
+}
+
+/**
+ * Génère le DEVIS FERME et le persiste — SANS l'envoyer.
+ * Le statut n'est PAS passé à "Devis envoyé" : ça se fait uniquement à l'envoi réel (envoyerDevis).
+ */
+export async function genererDevisFerme(formData: FormData) {
+  const id = String(formData.get("id"));
+  await calculerEtEnregistrerFerme(id);
   revalidateLead(id);
 }
 
@@ -91,10 +99,22 @@ export async function envoyerDevis(formData: FormData) {
     nb_voyageurs: number;
     clients: { prenom: string | null; nom: string | null; email: string | null } | null;
   } | null;
-  const devis = (devisRaw ?? [])[0] as { id: string; prix_ttc: number; lignes: { libelle: string; montant: number }[]; numero: string | null } | undefined;
+  let devis = (devisRaw ?? [])[0] as { id: string; prix_ttc: number; lignes: { libelle: string; montant: number }[]; numero: string | null } | undefined;
 
   if (!dem) throw new Error("Demande introuvable.");
-  if (!devis) throw new Error("Aucun devis ferme à envoyer : générez d'abord le devis.");
+  // Aucun devis ferme encore calculé : on le génère à la volée avant d'envoyer.
+  if (!devis) {
+    await calculerEtEnregistrerFerme(id);
+    const { data: regen } = await supabaseAdmin
+      .from("devis")
+      .select("id, prix_ttc, lignes, numero")
+      .eq("demande_id", id)
+      .eq("type", "ferme")
+      .order("created_at", { ascending: false })
+      .limit(1);
+    devis = (regen ?? [])[0] as { id: string; prix_ttc: number; lignes: { libelle: string; montant: number }[]; numero: string | null } | undefined;
+  }
+  if (!devis) throw new Error("Devis ferme non calculable automatiquement pour ce lead.");
   const email = dem.clients?.email;
   if (!email) throw new Error("Ce lead n'a pas d'email : impossible d'envoyer le devis.");
 
