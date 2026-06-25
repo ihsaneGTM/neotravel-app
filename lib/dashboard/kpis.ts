@@ -1,32 +1,14 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { STATUTS, STATUT_LABEL, type Statut } from "@/lib/ui/statuts";
+
+export { STATUTS, STATUT_LABEL, type Statut };
 
 /**
  * KPIs du dashboard de pilotage NeoTravel.
  * Source de vérité des délais/conversion = table `statut_historique`
  * (1 ligne par transition de statut). Le funnel = comptage par statut courant.
  */
-
-export const STATUTS = [
-  "new",
-  "qualified",
-  "contacted",
-  "quote_sent",
-  "negotiation",
-  "won",
-  "lost",
-] as const;
-export type Statut = (typeof STATUTS)[number];
-
-export const STATUT_LABEL: Record<Statut, string> = {
-  new: "Nouveau",
-  qualified: "Qualifié",
-  contacted: "Contacté",
-  quote_sent: "Devis envoyé",
-  negotiation: "Négociation",
-  won: "Gagné",
-  lost: "Perdu",
-};
 
 const SEUIL_48H_MS = 48 * 3600 * 1000;
 

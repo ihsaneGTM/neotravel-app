@@ -1,12 +1,98 @@
 @import "tailwindcss";
 
+/* ── NeoTravel — design system (clair indigo) ──────────────────────────── */
 :root {
-  --nt-cream: #f7f5ef;
-  --nt-ink: #0f1b2d;
+  --bg: #f6f7f9; /* fond app */
+  --panel: #ffffff; /* cartes / rail */
+  --ink: #0f172a; /* slate-900 */
+  --muted: #64748b; /* slate-500 */
+  --faint: #94a3b8; /* slate-400 */
+  --line: #eceef2; /* bordures douces */
+  --line-2: #e2e8f0;
+
+  --accent: #4f46e5; /* indigo-600 */
+  --accent-2: #6366f1; /* indigo-500 */
+  --accent-soft: #eef2ff; /* indigo-50 */
+  --accent-ink: #4338ca; /* indigo-700 */
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --sh-1: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --sh-2: 0 4px 12px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --sh-3: 0 12px 32px rgba(15, 23, 42, 0.1);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  border-color: var(--line);
 }
 
 body {
-  background: var(--nt-cream);
-  color: var(--nt-ink);
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Cartes flottantes premium */
+.nt-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--sh-1);
+}
+
+/* Lift au hover (micro-interaction obligatoire) */
+.nt-lift {
+  transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
+}
+.nt-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-2);
+}
+.nt-press:active {
+  transform: scale(0.97);
+}
+
+/* Fond whiteboard à points (Pipeline Map) */
+.nt-dots {
+  background-color: #f8fafc;
+  background-image: radial-gradient(circle, #d3d9e3 1.2px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+
+/* Scrollbar discrète */
+.nt-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.nt-scroll::-webkit-scrollbar-thumb {
+  background: #d7dce4;
+  border-radius: 999px;
+  border: 3px solid var(--panel);
+}
+.nt-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@keyframes nt-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.nt-in {
+  animation: nt-fade-in 0.4s var(--ease-out) both;
 }
