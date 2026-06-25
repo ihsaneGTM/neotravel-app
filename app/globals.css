@@ -96,3 +96,55 @@ body {
 .nt-in {
   animation: nt-fade-in 0.4s var(--ease-out) both;
 }
+
+/* ── Pipeline Map (canvas premium type n8n / growth-map) ─────────────────── */
+.nt-mapbg {
+  background-color: #eaedf3;
+  background-image:
+    radial-gradient(1100px 560px at 50% -12%, rgba(255, 255, 255, 0.85), transparent 55%),
+    radial-gradient(900px 520px at 88% 118%, rgba(40, 52, 82, 0.06), transparent 60%),
+    radial-gradient(circle, rgba(40, 52, 82, 0.09) 1.3px, transparent 1.3px);
+  background-size: auto, auto, 26px 26px;
+}
+/* Connecteur : flux qui défile (données en transit) */
+@keyframes nt-flow {
+  to {
+    stroke-dashoffset: -64;
+  }
+}
+.nt-edge-flow {
+  stroke-dasharray: 9 17;
+  animation: nt-flow 1.3s linear infinite;
+}
+.nt-paused .nt-edge-flow {
+  animation-play-state: paused;
+}
+/* Pastille LIVE : ping radar */
+@keyframes nt-ping {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+.nt-live-dot {
+  animation: nt-ping 1.9s var(--ease-out) infinite;
+}
+/* Nœud qui respire légèrement (vivant) */
+@keyframes nt-breathe {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.012);
+  }
+}
+.nt-node-card {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--sh-2), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}

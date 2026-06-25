@@ -7,6 +7,7 @@ import { eur, eur2, depuis } from "@/lib/ui/format";
 import { resendConfigured } from "@/lib/email/resend";
 import { Panel, StatusBadge, UrgenceBadge, ScorePill } from "@/components/office/ui";
 import { ScoreBar } from "@/components/office/charts";
+import { Shell } from "@/components/office/shell";
 import { avancerStatut, genererDevisFerme, envoyerDevis } from "@/app/commercial/actions";
 
 export const dynamic = "force-dynamic";
@@ -61,10 +62,12 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
 
   if (!dRaw) {
     return (
-      <div className="nt-card p-8 text-center">
-        <p className="text-slate-600">Lead introuvable.</p>
-        <Link href="/leads" className="mt-2 inline-block text-indigo-600 underline">← Inbox</Link>
-      </div>
+      <Shell>
+        <div className="nt-card p-8 text-center">
+          <p className="text-slate-600">Lead introuvable.</p>
+          <Link href="/leads" className="mt-2 inline-block text-indigo-600 underline">← Inbox</Link>
+        </div>
+      </Shell>
     );
   }
   const d = dRaw as unknown as Demande;
@@ -94,7 +97,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   if (suggestions.length === 0) suggestions.push("Confirmer les détails du trajet avec le client");
 
   return (
-    <>
+    <Shell>
       <Link href="/leads" className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800">
         <ArrowLeft className="h-4 w-4" /> Retour à l'inbox
       </Link>
@@ -263,7 +266,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           </Panel>
         </div>
       </div>
-    </>
+    </Shell>
   );
 }
 

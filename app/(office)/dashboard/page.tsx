@@ -18,6 +18,7 @@ import { STATUT_META, STATUT_LABEL } from "@/lib/ui/statuts";
 import { eur } from "@/lib/ui/format";
 import { Kpi, Panel, ScorePill, UrgenceBadge, PageHeader } from "@/components/office/ui";
 import { Donut, VBars } from "@/components/office/charts";
+import { Shell } from "@/components/office/shell";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export default async function DashboardPage() {
     .map((f) => ({ label: STATUT_LABEL[f.statut], value: f.count, hex: STATUT_META[f.statut].hex }));
 
   return (
-    <>
+    <Shell>
       <PageHeader icon={LayoutDashboard} title="Dashboard" subtitle="Votre centre de pilotage commercial augmenté par l'IA" />
 
       {/* KPIs */}
@@ -139,6 +140,6 @@ export default async function DashboardPage() {
           )}
         </Panel>
       </div>
-    </>
+    </Shell>
   );
 }
