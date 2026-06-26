@@ -60,7 +60,7 @@ type Devis = {
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [{ data: dRaw }, { data: devisRaw }, { data: appelsRaw }] = await Promise.all([
+  const [{ data: dRaw }, { data: devisRaw }, { data: appelsRaw }, { data: relancesRaw }] = await Promise.all([
     supabaseAdmin.from("demandes").select("*, clients(prenom, nom, email, telephone, consentement_rgpd), commerciaux(nom, email)").eq("id", id).single(),
     supabaseAdmin
       .from("devis")
@@ -68,7 +68,12 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
       .eq("demande_id", id)
       .order("created_at", { ascending: false }),
     supabaseAdmin.from("appels").select("id, transcript, resume, duree_sec, source, created_at").eq("demande_id", id).order("created_at", { ascending: false }),
+    supabaseAdmin.from("relances").select("statut, planifiee_pour").eq("demande_id", id),
   ]);
+  // Avancement des relances : échues = envoyées OU date passée (pour « En cours de relance » / « À rappeler »).
+  const relancesRows = (relancesRaw ?? []) as { statut: string; planifiee_pour: string | null }[];
+  const relancesTotal = relancesRows.length;
+  const relancesDues = relancesRows.filter((r) => r.statut === "envoyee" || (r.planifiee_pour && new Date(r.planifiee_pour).getTime() <= Date.now())).length;
   const emailConfigure = resendConfigured();
   const appels = (appelsRaw ?? []) as { id: string; transcript: string | null; resume: string | null; duree_sec: number | null; source: string; created_at: string }[];
 
@@ -312,6 +317,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
         id={d.id}
         statut={d.statut}
         devisPret={!!devis && !devis.envoye_at}
+        relancesTotal={relancesTotal}
+        relancesDues={relancesDues}
         hasEmail={!!d.clients?.email}
         emailConfigure={emailConfigure}
         email={d.clients?.email ?? null}

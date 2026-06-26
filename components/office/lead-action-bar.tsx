@@ -29,6 +29,8 @@ export function LeadActionBar({
   id,
   statut,
   devisPret,
+  relancesTotal = 0,
+  relancesDues = 0,
   hasEmail,
   emailConfigure,
   email,
@@ -37,6 +39,8 @@ export function LeadActionBar({
   id: string;
   statut: Statut;
   devisPret: boolean;
+  relancesTotal?: number;
+  relancesDues?: number;
   hasEmail: boolean;
   emailConfigure: boolean;
   email: string | null;
@@ -46,7 +50,7 @@ export function LeadActionBar({
   const [mounted, setMounted] = useState(false);
   // Portal vers <body> : indispensable car un ancêtre transformé (.nt-in) casserait position:fixed.
   useEffect(() => setMounted(true), []);
-  const action = leadAction(statut, { devisPret });
+  const action = leadAction(statut, { devisPret, relancesTotal, relancesDues });
 
   if (!mounted) return null;
 

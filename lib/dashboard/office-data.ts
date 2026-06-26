@@ -2,6 +2,21 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { STATUTS, type Statut } from "@/lib/ui/statuts";
 import { computeScore, niveauUrgence } from "@/lib/pipeline/scoring";
+import { leadAction, isCommercialAction } from "@/lib/pipeline/lead-action";
+
+/** Compte, par demande, le total de relances et celles « échues » (envoyées ou dont la date est passée). */
+async function relancesParDemande(sb: SupabaseClient): Promise<Map<string, { total: number; dues: number }>> {
+  const { data } = await sb.from("relances").select("demande_id, statut, planifiee_pour");
+  const now = Date.now();
+  const m = new Map<string, { total: number; dues: number }>();
+  for (const r of (data ?? []) as { demande_id: string; statut: string; planifiee_pour: string | null }[]) {
+    const e = m.get(r.demande_id) ?? { total: 0, dues: 0 };
+    e.total++;
+    if (r.statut === "envoyee" || (r.planifiee_pour && new Date(r.planifiee_pour).getTime() <= now)) e.dues++;
+    m.set(r.demande_id, e);
+  }
+  return m;
+}
 
 export interface DemandeRow {
   id: string;
@@ -260,6 +275,9 @@ export interface LeadListItem {
   created_at: string;
   /** Un devis ferme est généré et prêt à envoyer (pour distinguer "générer" vs "envoyer"). */
   devis_pret: boolean;
+  /** Avancement des relances (pour les colonnes « En cours de relance » / « À rappeler »). */
+  relances_total: number;
+  relances_dues: number;
 }
 
 /** Ensemble des demande_id ayant un devis ferme NON encore envoyé (prêt à envoyer). */
@@ -269,32 +287,40 @@ async function devisFermesPrets(sb: SupabaseClient): Promise<Set<string>> {
 }
 
 export async function getLeads(sb: SupabaseClient): Promise<LeadListItem[]> {
-  const [demandes, prets] = await Promise.all([fetchDemandes(sb), devisFermesPrets(sb)]);
-  return demandes.map((d) => ({
-    id: d.id,
-    client: nomClient(d),
-    contact: d.clients?.telephone ?? d.clients?.email ?? null,
-    statut: d.statut,
-    urgence: niveauUrgence(d.date_depart, d.date_demande),
-    trajet: trajet(d),
-    nb_voyageurs: d.nb_voyageurs,
-    date_depart: d.date_depart,
-    prestation: d.type_prestation,
-    resume: d.commentaire?.trim() || `${d.type_prestation} — ${trajet(d)}, ${d.nb_voyageurs} voyageurs.`,
-    score: scoreOf(d),
-    valeur: d.valeur_panier_estimee != null ? Number(d.valeur_panier_estimee) : null,
-    commercial: d.commerciaux?.nom ?? null,
-    created_at: d.created_at,
-    devis_pret: prets.has(d.id),
-  }));
+  const [demandes, prets, relances] = await Promise.all([fetchDemandes(sb), devisFermesPrets(sb), relancesParDemande(sb)]);
+  return demandes.map((d) => {
+    const rel = relances.get(d.id) ?? { total: 0, dues: 0 };
+    return {
+      id: d.id,
+      client: nomClient(d),
+      contact: d.clients?.telephone ?? d.clients?.email ?? null,
+      statut: d.statut,
+      urgence: niveauUrgence(d.date_depart, d.date_demande),
+      trajet: trajet(d),
+      nb_voyageurs: d.nb_voyageurs,
+      date_depart: d.date_depart,
+      prestation: d.type_prestation,
+      resume: d.commentaire?.trim() || `${d.type_prestation} — ${trajet(d)}, ${d.nb_voyageurs} voyageurs.`,
+      score: scoreOf(d),
+      valeur: d.valeur_panier_estimee != null ? Number(d.valeur_panier_estimee) : null,
+      commercial: d.commerciaux?.nom ?? null,
+      created_at: d.created_at,
+      devis_pret: prets.has(d.id),
+      relances_total: rel.total,
+      relances_dues: rel.dues,
+    };
+  });
 }
 
 /** Nombre de leads en attente d'une action COMMERCIALE (pour la pastille sidebar). */
 export async function getLeadActionCount(sb: SupabaseClient): Promise<number> {
-  const { data } = await sb.from("demandes").select("statut");
-  const rows = (data ?? []) as { statut: Statut }[];
-  // owner = commercial ⟺ statut ∈ {contacted, negotiation} (cf. lib/pipeline/lead-action.ts)
-  return rows.filter((r) => r.statut === "contacted" || r.statut === "negotiation").length;
+  const [{ data }, relances] = await Promise.all([sb.from("demandes").select("id, statut"), relancesParDemande(sb)]);
+  const rows = (data ?? []) as { id: string; statut: Statut }[];
+  // Source unique de vérité : owner === 'commercial' (inclut « À rappeler » des relances échues).
+  return rows.filter((r) => {
+    const rel = relances.get(r.id) ?? { total: 0, dues: 0 };
+    return isCommercialAction(leadAction(r.statut, { relancesTotal: rel.total, relancesDues: rel.dues }));
+  }).length;
 }
 
 export interface MapData {

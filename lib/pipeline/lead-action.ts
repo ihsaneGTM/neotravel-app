@@ -15,8 +15,10 @@ export type CtaKind = "generer" | "envoyer" | "avancer";
 export interface LeadActionCtx {
   /** Un devis ferme existe déjà (généré, pas forcément envoyé). */
   devisPret?: boolean;
-  /** Une relance de devis est en retard. */
-  relanceEnRetard?: boolean;
+  /** Nombre total de relances planifiées pour ce lead. */
+  relancesTotal?: number;
+  /** Nombre de relances échues (envoyées OU dont la date est passée). */
+  relancesDues?: number;
 }
 
 export interface LeadAction {
@@ -53,10 +55,15 @@ export function leadAction(statut: Statut, ctx: LeadActionCtx = {}): LeadAction 
       return ctx.devisPret
         ? { owner: "commercial", icon: "send", label: "Devis à envoyer", detail: "Le devis ferme est prêt. Vérifiez les informations puis envoyez-le au client.", cta: "Envoyer le devis", ctaKind: "envoyer" }
         : { owner: "commercial", icon: "file", label: "Devis à générer", detail: "Le client a été contacté. Générez le devis ferme pour pouvoir l'envoyer.", cta: "Générer le devis ferme", ctaKind: "generer" };
-    case "quote_sent":
-      return ctx.relanceEnRetard
-        ? { owner: "commercial", icon: "clock", label: "Relance en retard", detail: "Une relance de devis est en retard — relancez le client.", cta: "Faire avancer", ctaKind: "avancer" }
-        : { owner: "prospect", icon: "clock", label: "En attente client", detail: "Devis envoyé — en attente de la réponse du client. Les relances automatiques sont planifiées." };
+    case "quote_sent": {
+      const total = ctx.relancesTotal ?? 0;
+      const dues = ctx.relancesDues ?? 0;
+      if (total > 0 && dues >= total)
+        return { owner: "commercial", icon: "phone", label: "À rappeler", detail: "Toutes les relances ont été envoyées sans réponse — reprenez la main et rappelez le client.", cta: "Faire avancer", ctaKind: "avancer" };
+      if (dues > 0)
+        return { owner: "prospect", icon: "clock", label: "En cours de relance", detail: `Relance ${dues}/${total} envoyée — en attente de la réponse du client.` };
+      return { owner: "prospect", icon: "clock", label: "En attente client", detail: "Devis envoyé — en attente de la réponse du client. Les relances automatiques sont planifiées." };
+    }
     case "negotiation":
       return { owner: "commercial", icon: "user", label: "À finaliser", detail: "Le client négocie. Ajustez l'offre si besoin puis faites avancer le statut.", cta: "Faire avancer", ctaKind: "avancer" };
     case "won":
@@ -69,4 +76,40 @@ export function leadAction(statut: Statut, ctx: LeadActionCtx = {}): LeadAction 
 /** Vrai si le commercial doit agir (pour les compteurs et la mise en avant). */
 export function isCommercialAction(a: LeadAction): boolean {
   return a.owner === "commercial";
+}
+
+// ── Colonnes du board (timeline) — au-delà des statuts DB ────────────────────
+// quote_sent est éclaté en 3 sous-états selon l'avancement des relances :
+// « Devis envoyé » → « En cours de relance » → « À rappeler » (le commercial reprend la main).
+export type BoardKey = "new" | "qualified" | "contacted" | "devis_envoye" | "relance" | "a_rappeler" | "negotiation" | "won" | "lost";
+
+export interface BoardColumn {
+  key: BoardKey;
+  label: string;
+  owner: ActionOwner;
+  hex: string;
+}
+
+export const BOARD_COLUMNS: BoardColumn[] = [
+  { key: "new", label: "Nouveau", owner: "ia", hex: "#6f7163" },
+  { key: "qualified", label: "Qualifié", owner: "ia", hex: "#38471f" },
+  { key: "contacted", label: "Contacté", owner: "commercial", hex: "#2c3a1b" },
+  { key: "devis_envoye", label: "Devis envoyé", owner: "prospect", hex: "#c2d23f" },
+  { key: "relance", label: "En cours de relance", owner: "prospect", hex: "#a8bc3c" },
+  { key: "a_rappeler", label: "À rappeler", owner: "commercial", hex: "#b4452f" },
+  { key: "negotiation", label: "Négociation", owner: "commercial", hex: "#a8bc3c" },
+  { key: "won", label: "Gagné", owner: "done", hex: "#d8e762" },
+  { key: "lost", label: "Perdu", owner: "done", hex: "#b4452f" },
+];
+
+/** Colonne board d'un lead à partir de son statut (+ avancement des relances). */
+export function boardColumnOf(statut: Statut, ctx: LeadActionCtx = {}): BoardKey {
+  if (statut === "quote_sent") {
+    const total = ctx.relancesTotal ?? 0;
+    const dues = ctx.relancesDues ?? 0;
+    if (total > 0 && dues >= total) return "a_rappeler";
+    if (dues > 0) return "relance";
+    return "devis_envoye";
+  }
+  return statut as BoardKey; // new/qualified/contacted/negotiation/won/lost → 1:1
 }

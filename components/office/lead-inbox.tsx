@@ -6,12 +6,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Search, List, LayoutGrid, MapPin, Users, Calendar, Sparkles, PhoneCall, Loader2 } from "lucide-react";
 import type { LeadListItem } from "@/lib/dashboard/office-data";
 import { STATUTS, STATUT_LABEL, STATUT_META, type Statut } from "@/lib/ui/statuts";
-import { leadAction, isCommercialAction } from "@/lib/pipeline/lead-action";
+import { leadAction, isCommercialAction, boardColumnOf, BOARD_COLUMNS, type BoardKey } from "@/lib/pipeline/lead-action";
 import { eur } from "@/lib/ui/format";
 import { StatusBadge, UrgenceBadge, ScorePill, OwnerBadge } from "./ui";
 
-/** Action canonique d'un lead de l'inbox (statut + devis prêt). */
-const actionOf = (l: LeadListItem) => leadAction(l.statut, { devisPret: l.devis_pret });
+/** Contexte d'action d'un lead (devis prêt + avancement des relances). */
+const ctxOf = (l: LeadListItem) => ({ devisPret: l.devis_pret, relancesTotal: l.relances_total, relancesDues: l.relances_dues });
+/** Action canonique d'un lead de l'inbox. */
+const actionOf = (l: LeadListItem) => leadAction(l.statut, ctxOf(l));
+/** Colonne board (timeline) d'un lead. */
+const boardOf = (l: LeadListItem) => boardColumnOf(l.statut, ctxOf(l));
 
 type Tri = "score" | "valeur" | "date";
 
@@ -195,32 +199,44 @@ function LeadRow({ l }: { l: LeadListItem }) {
   );
 }
 
+// La colonne mise en avant à l'arrivée depuis un KPI (statut DB → colonne board).
+const HIGHLIGHT_BOARD: Partial<Record<Statut, BoardKey>> = { quote_sent: "devis_envoye" };
+
 function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statut | null }) {
+  const hiCol = highlight ? (HIGHLIGHT_BOARD[highlight] ?? (highlight as BoardKey)) : null;
   return (
     <div className="nt-scroll flex gap-4 overflow-x-auto pb-2">
-      {STATUTS.map((s) => {
-        const col = leads.filter((l) => l.statut === s);
-        const isHi = s === highlight;
-        const actions = col.filter((l) => isCommercialAction(actionOf(l))).length;
+      {BOARD_COLUMNS.map((bc) => {
+        const col = leads.filter((l) => boardOf(l) === bc.key);
+        const isHi = bc.key === hiCol;
+        const commercialCol = bc.owner === "commercial";
+        const actions = commercialCol ? col.length : 0;
+        // Colonnes sans action = grisées (juste attendre / auto / terminé) ; colonnes commerciales = pleine couleur.
+        const greyed = !commercialCol;
         return (
           <div
-            key={s}
+            key={bc.key}
             ref={isHi ? (el) => el?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }) : undefined}
-            className={`w-[280px] shrink-0 rounded-2xl ${isHi ? "nt-pop p-2.5" : actions > 0 ? "p-2.5 ring-1 ring-[var(--lime-deep)]" : ""}`}
+            className={`w-[280px] shrink-0 rounded-2xl p-2.5 transition-colors ${
+              isHi ? "nt-pop" : commercialCol && actions > 0 ? "ring-1 ring-[var(--lime-deep)]" : ""
+            } ${greyed ? "bg-[var(--bg-soft)]" : ""}`}
             style={isHi ? { background: "color-mix(in srgb, var(--lime-soft) 55%, transparent)" } : undefined}
           >
             <div className="mb-3 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full" style={{ background: STATUT_META[s].hex }} />
-              <span className="text-sm font-semibold text-[var(--ink)]">{STATUT_LABEL[s]}</span>
-              {actions > 0 ? (
+              <span className="h-2 w-2 rounded-full" style={{ background: greyed ? "var(--line-2)" : bc.hex }} />
+              <span className={`text-sm font-semibold ${greyed ? "text-[var(--faint)]" : "text-[var(--ink)]"}`}>{bc.label}</span>
+              {commercialCol && actions > 0 ? (
                 <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-[var(--lime-soft)] px-2 py-0.5 text-[0.68rem] font-bold text-[var(--forest)] ring-1 ring-[var(--lime-deep)]">
                   {actions} à faire
                 </span>
               ) : (
-                <span className="ml-auto text-xs text-[var(--faint)]">{col.length}</span>
+                <span className="ml-auto flex items-center gap-1 text-xs text-[var(--faint)]">
+                  {greyed && bc.owner !== "done" && <span className="text-[0.62rem] uppercase tracking-wide">{bc.owner === "ia" ? "auto" : "attente"}</span>}
+                  {col.length}
+                </span>
               )}
             </div>
-            <div className="space-y-3">
+            <div className={`space-y-3 ${greyed ? "opacity-80" : ""}`}>
               {col.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[var(--line-2)] py-8 text-center text-xs text-[var(--faint)]">
                   Aucun lead
