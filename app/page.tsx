@@ -24,8 +24,8 @@ const Clouds = () => <div className="ap-clouds" aria-hidden />;
 const FEATURES = [
   { bg: "bg-purple", reverse: false, h: "Le bon véhicule, à chaque fois", p: "Du minibus VIP à l'autocar 93 places : on sélectionne le véhicule adapté à votre groupe, votre trajet et votre budget.", photo: "/landing/photos/feat-exterior.jpg" },
   { bg: "bg-green", reverse: true, h: "Un interlocuteur, pas un formulaire", p: "Un conseiller dédié valide votre trajet, vos horaires et vos contraintes — par téléphone, simplement.", photo: "/landing/photos/feat-advisor.jpg" },
-  { bg: "bg-orange", reverse: false, h: "Une réponse sous 2 heures", p: "Fini les devis qui traînent. Votre demande est prise en charge et rappelée dans la foulée." },
-  { bg: "bg-sky", reverse: true, h: "Un devis clair, sans surprise", p: "Prix ferme annoncé par votre conseiller, sans estimation hasardeuse ni frais cachés." },
+  { bg: "bg-orange", reverse: false, h: "Une réponse sous 2 heures", p: "Fini les devis qui traînent. Votre demande est prise en charge et rappelée dans la foulée.", photo: "/landing/photos/feat-response.jpg" },
+  { bg: "bg-sky", reverse: true, h: "Un devis clair, sans surprise", p: "Prix ferme annoncé par votre conseiller, sans estimation hasardeuse ni frais cachés.", photo: "/landing/photos/feat-quote.jpg" },
 ];
 
 const FAQ = [
