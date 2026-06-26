@@ -8,6 +8,7 @@ import { resendConfigured } from "@/lib/email/resend";
 import { Panel, StatusBadge, UrgenceBadge, ScorePill } from "@/components/office/ui";
 import { ScoreBar } from "@/components/office/charts";
 import { Shell } from "@/components/office/shell";
+import { LeadRouteMap } from "@/components/office/lead-route-map";
 import { avancerStatut, genererDevisFerme, envoyerDevis } from "@/app/commercial/actions";
 
 export const dynamic = "force-dynamic";
@@ -167,6 +168,11 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               {d.commentaire?.trim() || "Pas de commentaire libre — demande qualifiée via les champs structurés."}
             </p>
           </Panel>
+          {d.ville_arrivee && (
+            <Panel title="Itinéraire" icon={MapPin}>
+              <LeadRouteMap from={d.ville_depart} to={d.ville_arrivee} />
+            </Panel>
+          )}
           <Panel title="Informations extraites">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
               <Info label="Contact" value={clientNom} />

@@ -45,6 +45,46 @@ export interface DistanceEstimee {
   source: "osrm" | "haversine" | "defaut";
 }
 
+export interface RouteGeometry {
+  start: { lat: number; lon: number };
+  end: { lat: number; lon: number };
+  /** Tracé routier complet, en [lat, lon] (prêt pour Leaflet). */
+  coords: [number, number][];
+  distance_km: number;
+  duration_min: number | null;
+}
+
+/**
+ * Géométrie complète de l'itinéraire routier entre deux villes (pour la carte).
+ * Géocodage Nominatim → tracé OSRM (overview=full). Repli ligne droite si OSRM échoue.
+ */
+export async function getRouteGeometry(villeDepart: string, villeArrivee: string): Promise<RouteGeometry | null> {
+  try {
+    const [a, b] = await Promise.all([geocode(villeDepart), geocode(villeArrivee)]);
+    if (!a || !b) return null;
+    const url = `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson`;
+    const r = await fetch(url, { headers: UA });
+    if (r.ok) {
+      const j = (await r.json()) as { routes?: Array<{ distance: number; duration: number; geometry?: { coordinates?: [number, number][] } }> };
+      const route = j.routes?.[0];
+      const line = route?.geometry?.coordinates;
+      if (route && Array.isArray(line) && line.length > 1) {
+        return {
+          start: a,
+          end: b,
+          coords: line.map(([lon, lat]) => [lat, lon] as [number, number]),
+          distance_km: Math.round(route.distance / 1000),
+          duration_min: Math.round(route.duration / 60),
+        };
+      }
+    }
+    // Repli : segment direct géocodé
+    return { start: a, end: b, coords: [[a.lat, a.lon], [b.lat, b.lon]], distance_km: Math.round(haversineKm(a, b) * 1.3), duration_min: null };
+  } catch {
+    return null;
+  }
+}
+
 export async function estimerDistanceKm(villeDepart: string, villeArrivee: string): Promise<DistanceEstimee> {
   try {
     const a = await geocode(villeDepart);
