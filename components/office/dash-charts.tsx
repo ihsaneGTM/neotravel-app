@@ -16,7 +16,7 @@ export function WorkflowPreview({ steps }: { steps: PreviewStep[] }) {
   return (
     <Link href="/workflow" className="group block">
       {/* Mini-whiteboard au style du vrai workflow : fond chaud + briques à badges qui dépassent + paquets animés */}
-      <div className="nt-mapbg relative overflow-hidden rounded-2xl border border-[var(--line)] px-5 pb-5 pt-8">
+      <div className="nt-mapbg relative rounded-2xl border border-[var(--line)] px-5 pb-5 pt-10">
         <div className="nt-scroll overflow-x-auto">
           <div className="flex min-w-[880px] items-center">
             {steps.map((s, i) => {
