@@ -30,9 +30,9 @@ function parseMarkers(text: string) {
 }
 
 function statutMeta(s: string) {
-  if (s === "a_rappeler") return { t: "À rappeler", c: "bg-rose-50 text-rose-600", dot: "bg-rose-500" };
-  if (s === "terminee") return { t: "Terminée", c: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
-  return { t: "En cours", c: "bg-slate-100 text-slate-500", dot: "bg-slate-300" };
+  if (s === "a_rappeler") return { t: "À rappeler", c: "bg-[var(--terracotta-soft)] text-[var(--terracotta-ink)]", dot: "bg-[var(--terracotta)]" };
+  if (s === "terminee") return { t: "Terminée", c: "bg-[var(--lime-soft)] text-[var(--forest)]", dot: "bg-[var(--forest)]" };
+  return { t: "En cours", c: "bg-[var(--grey)] text-[var(--muted)]", dot: "bg-[var(--faint)]" };
 }
 
 export function ConversationsViewer({ conversations }: { conversations: ConversationItem[] }) {
@@ -59,7 +59,7 @@ export function ConversationsViewer({ conversations }: { conversations: Conversa
               key={f}
               onClick={() => setFiltre(f)}
               className={`nt-press shrink-0 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                filtre === f ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                filtre === f ? "bg-[var(--ink)] text-[var(--cream)]" : "bg-[var(--grey)] text-[var(--muted)] hover:bg-[var(--line-2)]"
               }`}
             >
               {{ all: "Toutes", a_rappeler: `À rappeler${aRappeler ? ` (${aRappeler})` : ""}`, anonymes: "Anonymes", terminee: "Terminées" }[f]}
@@ -67,7 +67,7 @@ export function ConversationsViewer({ conversations }: { conversations: Conversa
           ))}
         </div>
         <div className="nt-scroll flex-1 overflow-y-auto">
-          {list.length === 0 && <p className="p-6 text-center text-sm text-slate-400">Aucune conversation.</p>}
+          {list.length === 0 && <p className="p-6 text-center text-sm text-[var(--faint)]">Aucune conversation.</p>}
           {list.map((c) => {
             const m = statutMeta(c.statut);
             const active = current?.id === c.id;
@@ -75,17 +75,17 @@ export function ConversationsViewer({ conversations }: { conversations: Conversa
               <button
                 key={c.id}
                 onClick={() => setSel(c.id)}
-                className={`flex w-full items-start gap-3 border-b border-[var(--line)] px-3.5 py-3 text-left transition-colors ${active ? "bg-indigo-50/60" : "hover:bg-slate-50"}`}
+                className={`flex w-full items-start gap-3 border-b border-[var(--line)] px-3.5 py-3 text-left transition-colors ${active ? "bg-[var(--lime-soft)]/60" : "hover:bg-[var(--bg-soft)]"}`}
               >
-                <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full ${c.client ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>
+                <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full ${c.client ? "bg-[var(--lime-soft)] text-[var(--forest)]" : "bg-[var(--grey)] text-[var(--faint)]"}`}>
                   {c.client ? <UserRound className="h-4 w-4" /> : <ShieldQuestion className="h-4 w-4" />}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-slate-800">{c.client ?? "Anonyme"}</span>
-                    <span className="shrink-0 text-[0.65rem] text-slate-400">{depuis(c.updated_at)}</span>
+                    <span className="truncate text-sm font-medium text-[var(--ink)]">{c.client ?? "Anonyme"}</span>
+                    <span className="shrink-0 text-[0.65rem] text-[var(--faint)]">{depuis(c.updated_at)}</span>
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-slate-400">{c.dernier_message || "—"}</p>
+                  <p className="mt-0.5 truncate text-xs text-[var(--faint)]">{c.dernier_message || "—"}</p>
                   <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.65rem] font-medium ${m.c}`}>
                     <span className={`h-1.5 w-1.5 rounded-full ${m.dot}`} /> {m.t}
                   </span>
@@ -102,18 +102,18 @@ export function ConversationsViewer({ conversations }: { conversations: Conversa
           <>
             <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 py-3.5">
               <div className="flex items-center gap-2.5">
-                <span className={`grid h-9 w-9 place-items-center rounded-full ${current.client ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>
+                <span className={`grid h-9 w-9 place-items-center rounded-full ${current.client ? "bg-[var(--lime-soft)] text-[var(--forest)]" : "bg-[var(--grey)] text-[var(--faint)]"}`}>
                   {current.client ? <UserRound className="h-4 w-4" /> : <ShieldQuestion className="h-4 w-4" />}
                 </span>
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">{current.client ?? "Conversation anonyme"}</p>
-                  <p className="text-xs text-slate-400">{current.nb_messages} messages · {depuis(current.updated_at)}</p>
+                  <p className="text-sm font-semibold text-[var(--ink)]">{current.client ?? "Conversation anonyme"}</p>
+                  <p className="text-xs text-[var(--faint)]">{current.nb_messages} messages · {depuis(current.updated_at)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statutMeta(current.statut).c}`}>{statutMeta(current.statut).t}</span>
                 {current.demande_id && (
-                  <Link href={`/leads/${current.demande_id}`} className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
+                  <Link href={`/leads/${current.demande_id}`} className="flex items-center gap-1 rounded-lg bg-[var(--ink)] px-3 py-1.5 text-xs font-medium text-[var(--cream)] hover:bg-[#20231a]">
                     Voir le lead <ArrowUpRight className="h-3.5 w-3.5" />
                   </Link>
                 )}
@@ -121,20 +121,20 @@ export function ConversationsViewer({ conversations }: { conversations: Conversa
             </div>
 
             {current.statut === "a_rappeler" && (
-              <div className="flex items-center gap-2 bg-rose-50 px-5 py-2 text-xs font-medium text-rose-600">
+              <div className="flex items-center gap-2 bg-[var(--terracotta-soft)] px-5 py-2 text-xs font-medium text-[var(--terracotta-ink)]">
                 <PhoneCall className="h-3.5 w-3.5" /> L'IA a jugé ce dossier prioritaire — un commercial doit rappeler.
               </div>
             )}
 
-            <div className="nt-scroll flex-1 space-y-3 overflow-y-auto bg-slate-50/40 p-5">
-              {current.transcript.length === 0 && <p className="text-center text-sm text-slate-400">Transcript vide.</p>}
+            <div className="nt-scroll flex-1 space-y-3 overflow-y-auto bg-[var(--bg-soft)]/40 p-5">
+              {current.transcript.length === 0 && <p className="text-center text-sm text-[var(--faint)]">Transcript vide.</p>}
               {current.transcript.map((msg, i) => {
                 if (msg.role === "user") {
                   const t = msg.text.trim();
                   if (!t) return null;
                   return (
                     <div key={i} className="flex justify-end">
-                      <div className="max-w-[78%] rounded-2xl bg-indigo-600 px-3.5 py-2 text-sm leading-relaxed text-white"><Rich text={t} /></div>
+                      <div className="max-w-[78%] rounded-2xl bg-[var(--ink)] px-3.5 py-2 text-sm leading-relaxed text-[var(--cream)]"><Rich text={t} /></div>
                     </div>
                   );
                 }
@@ -142,23 +142,23 @@ export function ConversationsViewer({ conversations }: { conversations: Conversa
                 if (!display && !choices && !contact) return null;
                 return (
                   <div key={i} className="flex flex-col items-start gap-1.5">
-                    {display && <div className="max-w-[78%] rounded-2xl bg-white px-3.5 py-2 text-sm leading-relaxed text-slate-700 shadow-sm"><Rich text={display} /></div>}
+                    {display && <div className="max-w-[78%] rounded-2xl bg-white px-3.5 py-2 text-sm leading-relaxed text-[var(--ink)] shadow-sm"><Rich text={display} /></div>}
                     {choices && (
-                      <div className="max-w-[80%] rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 px-3 py-2">
-                        <p className="mb-1.5 text-[0.7rem] font-medium text-indigo-500">Choix proposés{choices.question ? ` · ${choices.question}` : ""}</p>
-                        <div className="flex flex-wrap gap-1.5">{choices.options.map((o) => <span key={o} className="rounded-full bg-white px-2.5 py-1 text-xs text-slate-600 shadow-sm">{o}</span>)}</div>
+                      <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--lime-deep)] bg-[var(--lime-soft)]/50 px-3 py-2">
+                        <p className="mb-1.5 text-[0.7rem] font-medium text-[var(--olive)]">Choix proposés{choices.question ? ` · ${choices.question}` : ""}</p>
+                        <div className="flex flex-wrap gap-1.5">{choices.options.map((o) => <span key={o} className="rounded-full bg-white px-2.5 py-1 text-xs text-[var(--muted)] shadow-sm">{o}</span>)}</div>
                       </div>
                     )}
-                    {contact && <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/50 px-3 py-1.5 text-[0.7rem] font-medium text-emerald-600">🧾 Formulaire de coordonnées proposé</div>}
+                    {contact && <div className="rounded-xl border border-dashed border-[var(--lime-deep)] bg-[var(--lime-soft)]/50 px-3 py-1.5 text-[0.7rem] font-medium text-[var(--forest)]">🧾 Formulaire de coordonnées proposé</div>}
                   </div>
                 );
               })}
             </div>
           </>
         ) : (
-          <div className="grid flex-1 place-items-center text-sm text-slate-400">
+          <div className="grid flex-1 place-items-center text-sm text-[var(--faint)]">
             <div className="text-center">
-              <MessageSquare className="mx-auto h-8 w-8 text-slate-300" />
+              <MessageSquare className="mx-auto h-8 w-8 text-[var(--faint)]" />
               <p className="mt-2">Aucune conversation à afficher.</p>
             </div>
           </div>

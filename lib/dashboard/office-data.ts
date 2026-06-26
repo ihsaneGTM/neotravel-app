@@ -66,6 +66,12 @@ export interface DashboardData {
   opportunities: { id: string; client: string; trajet: string; urgence: string; score: number }[];
   upcoming: { id: string; objet: string; commercial: string | null; statut: string }[];
   a_envoyer: { demande_id: string; client: string; trajet: string; prix_ttc: number }[];
+  /** Série quotidienne sur 30 j (réelle, depuis created_at) — pour le graphe d'activité + courbe pipeline. */
+  daily: { date: string; leads: number; pipeline: number }[];
+  /** Variation vs période précédente de même longueur (%), null si base nulle. */
+  deltas: { new_leads: number | null; quotes: number | null; pipeline: number | null };
+  /** Période active (echo pour l'UI). */
+  period: Period;
 }
 
 export interface FollowupItem {
@@ -325,10 +331,33 @@ const CANAL_LABEL: Record<string, string> = {
   import: "Import",
 };
 
-export async function getDashboard(sb: SupabaseClient): Promise<DashboardData> {
-  const [demandes, devisRes, relancesRes, aEnvoyerRes] = await Promise.all([
+/** Filtre de période global du dashboard. */
+export type Period = "today" | "yesterday" | "7d" | "14d" | "30d";
+export const PERIODS: { key: Period; label: string }[] = [
+  { key: "today", label: "Aujourd'hui" },
+  { key: "yesterday", label: "Hier" },
+  { key: "7d", label: "7 jours" },
+  { key: "14d", label: "14 jours" },
+  { key: "30d", label: "30 jours" },
+];
+
+export function periodWindow(period: Period) {
+  const now = Date.now();
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const startTs = start.getTime();
+  const DAY = 86_400_000;
+  if (period === "today") return { from: startTs, to: now, prevFrom: startTs - DAY, prevTo: startTs };
+  if (period === "yesterday") return { from: startTs - DAY, to: startTs, prevFrom: startTs - 2 * DAY, prevTo: startTs - DAY };
+  const d = period === "7d" ? 7 : period === "14d" ? 14 : 30;
+  return { from: now - d * DAY, to: now, prevFrom: now - 2 * d * DAY, prevTo: now - d * DAY };
+}
+
+export async function getDashboard(sb: SupabaseClient, period: Period = "30d"): Promise<DashboardData> {
+  const [demandes, , devisDatesRes, relancesRes, aEnvoyerRes] = await Promise.all([
     fetchDemandes(sb),
     sb.from("devis").select("id", { count: "exact", head: true }),
+    sb.from("devis").select("created_at"),
     sb.from("relances").select("id, statut, objet, planifiee_pour").order("planifiee_pour", { ascending: true }),
     sb
       .from("devis")
@@ -338,12 +367,21 @@ export async function getDashboard(sb: SupabaseClient): Promise<DashboardData> {
       .order("created_at", { ascending: false }),
   ]);
 
-  const counts = Object.fromEntries(STATUTS.map((s) => [s, 0])) as Record<Statut, number>;
-  for (const d of demandes) if (counts[d.statut] != null) counts[d.statut]++;
+  const win = periodWindow(period);
+  const inWin = (iso: string | null | undefined, from = win.from, to = win.to) => {
+    if (!iso) return false;
+    const t = new Date(iso).getTime();
+    return t >= from && t < to;
+  };
+  // Sous-ensemble des demandes créées dans la période (pilote tous les agrégats analytiques).
+  const demandesIn = demandes.filter((d) => inWin(d.created_at));
 
-  const active = demandes.filter((d) => d.statut !== "won" && d.statut !== "lost");
+  const counts = Object.fromEntries(STATUTS.map((s) => [s, 0])) as Record<Statut, number>;
+  for (const d of demandesIn) if (counts[d.statut] != null) counts[d.statut]++;
+
+  const active = demandesIn.filter((d) => d.statut !== "won" && d.statut !== "lost");
   const pipeline_value = active.reduce((s, d) => s + (Number(d.valeur_panier_estimee) || 0), 0);
-  const scores = demandes.map(scoreOf);
+  const scores = demandesIn.map(scoreOf);
   const avg_score = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
   const won = counts.won;
   const lost = counts.lost;
@@ -358,9 +396,9 @@ export async function getDashboard(sb: SupabaseClient): Promise<DashboardData> {
   const pending = relances.filter((r) => r.statut === "planifiee");
   const overdue = pending.filter((r) => r.planifiee_pour && new Date(r.planifiee_pour).getTime() < Date.now());
 
-  // Leads par canal
+  // Leads par canal (sur la période)
   const canalMap = new Map<string, number>();
-  for (const d of demandes) canalMap.set(d.canal, (canalMap.get(d.canal) ?? 0) + 1);
+  for (const d of demandesIn) canalMap.set(d.canal, (canalMap.get(d.canal) ?? 0) + 1);
   const by_canal = [...canalMap.entries()].map(([k, v]) => ({ label: CANAL_LABEL[k] ?? k, value: v }));
 
   // Opportunités prioritaires : leads actifs triés par score.
@@ -399,11 +437,47 @@ export async function getDashboard(sb: SupabaseClient): Promise<DashboardData> {
       prix_ttc: Number(r.prix_ttc) || 0,
     }));
 
+  // ── Série quotidienne sur la fenêtre de période (depuis created_at) ───────────
+  const dayKey = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const DAY = 86_400_000;
+  const startDay = new Date(win.from);
+  startDay.setHours(0, 0, 0, 0);
+  const endDay = new Date(win.to);
+  endDay.setHours(0, 0, 0, 0);
+  const dayList: string[] = [];
+  for (let t = startDay.getTime(); t <= endDay.getTime(); t += DAY) dayList.push(dayKey(t));
+  const leadsByDay = new Map<string, number>();
+  for (const d of demandesIn) {
+    const k = (d.created_at ?? "").slice(0, 10);
+    if (k) leadsByDay.set(k, (leadsByDay.get(k) ?? 0) + 1);
+  }
+  // Pipeline cumulé sur la fenêtre : somme des paniers actifs créés jusqu'à chaque jour.
+  const activeWithDate = active
+    .map((d) => ({ t: new Date(d.created_at ?? win.to).getTime(), v: Number(d.valeur_panier_estimee) || 0 }))
+    .sort((a, b) => a.t - b.t);
+  const daily = dayList.map((date) => {
+    const end = new Date(date + "T23:59:59").getTime();
+    const pipeline = activeWithDate.reduce((s, x) => (x.t <= end ? s + x.v : s), 0);
+    return { date, leads: leadsByDay.get(date) ?? 0, pipeline };
+  });
+
+  // ── Deltas vs période précédente de même longueur ─────────────────────────────
+  const pct = (cur: number, prev: number): number | null => (prev <= 0 ? (cur > 0 ? 100 : null) : Math.round(((cur - prev) / prev) * 1000) / 10);
+  const prevIn = demandes.filter((d) => inWin(d.created_at, win.prevFrom, win.prevTo));
+  const leadsCur = demandesIn.length;
+  const leadsPrev = prevIn.length;
+  const prevPipeline = prevIn
+    .filter((d) => d.statut !== "won" && d.statut !== "lost")
+    .reduce((s, d) => s + (Number(d.valeur_panier_estimee) || 0), 0);
+  const devisDates = (devisDatesRes.data ?? []) as { created_at: string }[];
+  const devisCur = devisDates.filter((d) => inWin(d.created_at)).length;
+  const devisPrev = devisDates.filter((d) => inWin(d.created_at, win.prevFrom, win.prevTo)).length;
+
   return {
     total: demandes.length,
     new_leads: counts.new,
     qualified: counts.qualified,
-    quotes_generated: devisRes.count ?? 0,
+    quotes_generated: devisCur,
     pipeline_value,
     avg_score,
     conversion_rate,
@@ -414,5 +488,8 @@ export async function getDashboard(sb: SupabaseClient): Promise<DashboardData> {
     opportunities,
     upcoming,
     a_envoyer,
+    daily,
+    deltas: { new_leads: pct(leadsCur, leadsPrev), quotes: pct(devisCur, devisPrev), pipeline: pct(pipeline_value, prevPipeline) },
+    period,
   };
 }

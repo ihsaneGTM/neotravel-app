@@ -39,7 +39,7 @@ export function Rail() {
         href={href}
         title={collapsed ? label : undefined}
         className={`nt-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-          active ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+          active ? "bg-[var(--lime-soft)] text-[var(--forest)]" : "text-[var(--muted)] hover:bg-[var(--bg-soft)] hover:text-[var(--ink)]"
         }`}
       >
         <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={active ? 2.4 : 2} />
@@ -54,10 +54,10 @@ export function Rail() {
       style={{ transitionTimingFunction: "var(--ease-out)" }}
     >
       <Link href="/dashboard" className="flex h-16 items-center gap-2.5 px-4">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white shadow-sm">
-          <Sparkles className="h-5 w-5" strokeWidth={2.2} />
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl shadow-sm" style={{ background: "var(--ink)" }}>
+          <Sparkles className="h-5 w-5" strokeWidth={2.2} style={{ color: "var(--lime)" }} />
         </span>
-        {!collapsed && <span className="text-[15px] font-bold tracking-tight text-slate-900">NeoTravel</span>}
+        {!collapsed && <span className="text-[15px] font-bold tracking-tight" style={{ fontFamily: "var(--font-jakarta)", color: "var(--ink)" }}>NeoTravel</span>}
       </Link>
 
       {/* Usage quotidien */}
@@ -66,20 +66,20 @@ export function Rail() {
       {/* Configuration (growth / ops) — dissociée du quotidien */}
       <div className="mx-3 border-t border-[var(--line-2)]" />
       <div className="space-y-1 px-3 py-3">
-        {!collapsed && <p className="mb-1 px-3 text-[0.65rem] font-semibold uppercase tracking-wider text-slate-300">Configuration</p>}
+        {!collapsed && <p className="mb-1 px-3 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--faint)]">Configuration</p>}
         {item("/workflow", "Workflow", Workflow)}
         {item("/studio", "Studio", Wand2)}
       </div>
 
       {/* Footer */}
       <div className="space-y-1 border-t border-[var(--line)] px-3 py-3">
-        <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-50">
+        <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--faint)] transition-colors hover:bg-[var(--bg-soft)]">
           <LogOut className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
           {!collapsed && <span>Sign Out</span>}
         </button>
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-50"
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[var(--faint)] transition-colors hover:bg-[var(--bg-soft)]"
         >
           <ChevronLeft className={`h-[18px] w-[18px] shrink-0 transition-transform ${collapsed ? "rotate-180" : ""}`} strokeWidth={2} />
           {!collapsed && <span>Collapse</span>}

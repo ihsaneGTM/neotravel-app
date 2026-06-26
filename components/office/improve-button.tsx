@@ -10,9 +10,10 @@ export function ImproveButton() {
   return (
     <Link
       href="/studio"
-      className="nt-press fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(79,70,229,0.4)] transition hover:scale-[1.03]"
+      className="nt-press fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold shadow-[0_10px_28px_rgba(22,23,14,0.28)] transition hover:scale-[1.03]"
+      style={{ background: "var(--ink)", color: "var(--cream)" }}
     >
-      <Sparkles className="h-4 w-4" /> Améliorer
+      <Sparkles className="h-4 w-4" style={{ color: "var(--lime)" }} /> Améliorer
     </Link>
   );
 }

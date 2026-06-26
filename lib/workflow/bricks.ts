@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getPipelineMap } from "@/lib/dashboard/office-data";
+import { STATUTS, type Statut } from "@/lib/ui/statuts";
+import { getPipelineMap, periodWindow, type Period } from "@/lib/dashboard/office-data";
 import { MODELS } from "@/lib/ai/models";
 import { SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { MATRICES_DEFAUT } from "@/lib/pricing/calculer-devis";
@@ -28,16 +29,90 @@ export interface Brick {
   y: number;
   live: boolean;
   statusLabel: string;
-  metrics: { label: string; value: string | number }[];
+  metrics: { label: string; value: string | number; now?: boolean }[];
   sections: Section[];
   links: { label: string; href: string }[];
   integration?: { providers: string[]; status: "connecte" | "a_connecter"; via: string };
+  /** Compteurs live (badges « ici » / « période ») — injectés par getWorkflow. */
+  badges?: BrickLive;
 }
 
 const eur = (n: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+
+// ── Funnel TEMPS RÉEL par brique ────────────────────────────────────────────
+// Chaque brique expose 2 chiffres : `now` (actuellement à cette étape, live) et
+// `period` (volume passé par l'étape sur la période choisie), pour les badges.
+export interface BrickLive {
+  now: number;
+  nowLabel: string;
+  period: number;
+  periodLabel: string;
+  live: boolean;
+  statusLabel: string;
+}
+export type WorkflowLive = Record<string, BrickLive>;
+
+const STATUT_ORDER: Record<Statut, number> = { new: 0, qualified: 1, contacted: 2, quote_sent: 3, negotiation: 4, won: 5, lost: 6 };
+const CONV_ACTIVE_MS = 5 * 60 * 1000; // conversation active si dernier message < 5 min
+
+/**
+ * Compteurs live du pipeline. `now` = snapshot (statut courant / conversations actives) ;
+ * `period` = volume de leads ayant atteint l'étape sur la période (created_at dans la fenêtre).
+ */
+export async function getWorkflowLive(sb: SupabaseClient, period: Period = "today"): Promise<WorkflowLive> {
+  const now = Date.now();
+  const win = periodWindow(period);
+  const inWin = (iso: string | null | undefined) => {
+    if (!iso) return false;
+    const t = new Date(iso).getTime();
+    return t >= win.from && t < win.to;
+  };
+
+  const [convRes, demRes, relRes] = await Promise.all([
+    sb.from("conversations").select("statut, updated_at, created_at"),
+    sb.from("demandes").select("id, statut, commercial_id, created_at"),
+    sb.from("relances").select("statut, planifiee_pour, created_at"),
+  ]);
+
+  // Conversations : actives (< 5 min) en snapshot ; lancées sur la période
+  const convs = (convRes.data ?? []) as { statut: string; updated_at: string; created_at: string }[];
+  const convActive = convs.filter((c) => c.statut === "en_cours" && now - new Date(c.updated_at).getTime() < CONV_ACTIVE_MS).length;
+  const convPeriod = convs.filter((c) => inWin(c.created_at)).length;
+
+  // Demandes : statut courant (snapshot) + sous-ensemble période
+  const dem = (demRes.data ?? []) as { id: string; statut: Statut; commercial_id: string | null; created_at: string }[];
+  const cur = Object.fromEntries(STATUTS.map((s) => [s, 0])) as Record<Statut, number>;
+  let attributed = 0;
+  for (const d of dem) {
+    if (cur[d.statut] != null) cur[d.statut]++;
+    if (d.commercial_id) attributed++;
+  }
+  const demInPeriod = dem.filter((d) => inWin(d.created_at));
+  // « parcouru jusqu'à » selon le statut courant (lost compté comme ayant atteint « qualifié »)
+  const effOrder = (s: Statut) => (s === "lost" ? STATUT_ORDER.qualified : STATUT_ORDER[s]);
+  const periodReached = (s: Statut) => demInPeriod.filter((d) => effOrder(d.statut) >= STATUT_ORDER[s]).length;
+
+  // Relances
+  const rel = (relRes.data ?? []) as { statut: string; planifiee_pour: string | null }[];
+  const pending = rel.filter((r) => r.statut === "planifiee");
+  const overdue = pending.filter((r) => r.planifiee_pour && new Date(r.planifiee_pour).getTime() < now).length;
+
+  const won = cur.won;
+  const conv = won + cur.lost === 0 ? null : Math.round((won / (won + cur.lost)) * 100);
+
+  return {
+    chat: { now: convActive, nowLabel: "en ligne", period: convPeriod, periodLabel: "lancées", live: convActive > 0 || convPeriod > 0, statusLabel: convActive > 0 ? `${convActive} en ligne` : "LIVE" },
+    qualif: { now: cur.new, nowLabel: "à qualifier", period: demInPeriod.length, periodLabel: "leads", live: dem.length > 0, statusLabel: "LIVE" },
+    attrib: { now: cur.qualified, nowLabel: "en attente", period: periodReached("qualified"), periodLabel: "qualifiés", live: attributed > 0, statusLabel: attributed > 0 ? "LIVE" : "PRÊT" },
+    appel: { now: cur.contacted, nowLabel: "à cette étape", period: periodReached("contacted"), periodLabel: "contactés", live: cur.contacted > 0, statusLabel: cur.contacted > 0 ? "LIVE" : "À CONNECTER" },
+    devis: { now: cur.quote_sent, nowLabel: "à cette étape", period: periodReached("quote_sent"), periodLabel: "devis", live: cur.quote_sent > 0, statusLabel: cur.quote_sent > 0 ? "LIVE" : "PRÊT" },
+    relances: { now: pending.length, nowLabel: "en attente", period: overdue, periodLabel: "en retard", live: pending.length > 0, statusLabel: pending.length > 0 ? "LIVE" : "PRÊT" },
+    pilotage: { now: won, nowLabel: "gagnés", period: periodReached("won"), periodLabel: "gagnés", live: won > 0 || conv != null, statusLabel: conv == null ? "LIVE" : `${conv}% conv.` },
+  };
+}
 const MOIS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"];
 
-export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
+export async function getWorkflow(sb: SupabaseClient, period: Period = "today"): Promise<Brick[]> {
   const map = await getPipelineMap(sb, MODELS.agent);
   const [{ count: convCount }, { count: convFlag }, { count: appelsCount }, { data: commsData }] = await Promise.all([
     sb.from("conversations").select("id", { count: "exact", head: true }),
@@ -50,18 +125,19 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
   const studio = studioConfigured().ok;
   const cadence = await getRelancesCadence(sb);
   const M = MATRICES_DEFAUT;
+  const live = await getWorkflowLive(sb, period); // badges live « ici » / « période » par brique
 
   // Coefficient saison condensé (regroupe les mois par coeff).
   const saisonRows = Object.entries(M.saison).map(([mois, s]) => [MOIS[Number(mois) - 1], `${s.libelle}`, `×${s.coeff}`]);
   const anticipationRows = M.anticipation.map((a) => [a.libelle, `×${a.coeff}`]);
   const capaciteRows = M.capacite.map((c) => [c.libelle, `×${c.coeff}`, c.type_vehicule.replace(/_/g, " ")]);
 
-  return [
+  const bricks: Brick[] = [
     {
       key: "chat",
       title: "Conversation IA",
       icon: "chat",
-      tint: "#4f46e5",
+      tint: "#2c3a1b",
       kind: "ia",
       x: 40,
       y: 70,
@@ -96,7 +172,7 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
       key: "qualif",
       title: "Qualification & scoring",
       icon: "gauge",
-      tint: "#0ea5e9",
+      tint: "#4a6a1f",
       kind: "code",
       x: 360,
       y: 220,
@@ -132,7 +208,7 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
       key: "attrib",
       title: "Attribution / CRM",
       icon: "users",
-      tint: "#10b981",
+      tint: "#6b8f2a",
       kind: "code",
       x: 680,
       y: 70,
@@ -166,7 +242,7 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
       key: "appel",
       title: "Appel commercial",
       icon: "phone",
-      tint: "#e0a800",
+      tint: "#c2a02e",
       kind: "integration",
       x: 1000,
       y: 220,
@@ -198,7 +274,7 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
       key: "devis",
       title: "Devis",
       icon: "file",
-      tint: "#f59e0b",
+      tint: "#a8902a",
       kind: "code",
       x: 1320,
       y: 70,
@@ -234,7 +310,7 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
       key: "relances",
       title: "Relances",
       icon: "bell",
-      tint: "#8b5cf6",
+      tint: "#b4452f",
       kind: "integration",
       x: 1640,
       y: 220,
@@ -264,7 +340,7 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
       key: "pilotage",
       title: "Pilotage",
       icon: "chart",
-      tint: "#64748b",
+      tint: "#38471f",
       kind: "data",
       x: 1960,
       y: 70,
@@ -293,4 +369,12 @@ export async function getWorkflow(sb: SupabaseClient): Promise<Brick[]> {
       ],
     },
   ];
+
+  // Conserve les métriques descriptives d'origine + attache les badges live.
+  return bricks.map((b) => ({
+    ...b,
+    badges: live[b.key],
+    live: live[b.key]?.live ?? b.live,
+    statusLabel: live[b.key]?.statusLabel ?? b.statusLabel,
+  }));
 }

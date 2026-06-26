@@ -24,19 +24,19 @@ export default async function AnalyticsPage() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel title="Tunnel de conversion">
-          {a.total ? <HBars data={a.funnel} /> : <p className="py-8 text-center text-sm text-slate-400">Aucune donnée.</p>}
+          {a.total ? <HBars data={a.funnel} /> : <p className="py-8 text-center text-sm text-[var(--faint)]">Aucune donnée.</p>}
         </Panel>
         <Panel title="Sources de leads (canal)">
-          {a.sources.length ? <HBars data={a.sources} color="#10b981" /> : <p className="py-8 text-center text-sm text-slate-400">Aucune donnée.</p>}
+          {a.sources.length ? <HBars data={a.sources} color="#2c3a1b" /> : <p className="py-8 text-center text-sm text-[var(--faint)]">Aucune donnée.</p>}
         </Panel>
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel title="Distribution des scores">
-          <VBars data={a.score_dist.map((d, i) => ({ ...d, hex: ["#f43f5e", "#f59e0b", "#0ea5e9", "#10b981"][i] }))} />
+          <VBars data={a.score_dist.map((d, i) => ({ ...d, hex: ["#b4452f", "#c2a02e", "#2c3a1b", "#2c3a1b"][i] }))} />
         </Panel>
         <Panel title="Par type de prestation">
-          {a.by_purpose.length ? <Donut segments={a.by_purpose} /> : <p className="py-8 text-center text-sm text-slate-400">Aucune donnée.</p>}
+          {a.by_purpose.length ? <Donut segments={a.by_purpose} /> : <p className="py-8 text-center text-sm text-[var(--faint)]">Aucune donnée.</p>}
         </Panel>
       </div>
 
@@ -44,7 +44,7 @@ export default async function AnalyticsPage() {
         <Panel title="Performance par commercial">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[var(--line)] text-left text-xs uppercase tracking-wide text-slate-400">
+              <tr className="border-b border-[var(--line)] text-left text-xs uppercase tracking-wide text-[var(--faint)]">
                 <th className="py-2 pr-4 font-medium">Commercial</th>
                 <th className="py-2 pr-4 font-medium">Leads</th>
                 <th className="py-2 pr-4 font-medium">Pipeline</th>
@@ -53,11 +53,11 @@ export default async function AnalyticsPage() {
             </thead>
             <tbody>
               {a.team.map((t) => (
-                <tr key={t.nom} className="border-b border-slate-100 last:border-0">
-                  <td className="py-2.5 pr-4 font-medium text-slate-700">{t.nom}</td>
-                  <td className="py-2.5 pr-4 text-slate-600">{t.leads}</td>
-                  <td className="py-2.5 pr-4 tabular-nums text-slate-600">{eur(t.pipeline)}</td>
-                  <td className="py-2.5 tabular-nums text-slate-600">{t.avg ? eur(t.avg) : "—"}</td>
+                <tr key={t.nom} className="border-b border-[var(--line)] last:border-0">
+                  <td className="py-2.5 pr-4 font-medium text-[var(--ink)]">{t.nom}</td>
+                  <td className="py-2.5 pr-4 text-[var(--muted)]">{t.leads}</td>
+                  <td className="py-2.5 pr-4 tabular-nums text-[var(--muted)]">{eur(t.pipeline)}</td>
+                  <td className="py-2.5 tabular-nums text-[var(--muted)]">{t.avg ? eur(t.avg) : "—"}</td>
                 </tr>
               ))}
             </tbody>

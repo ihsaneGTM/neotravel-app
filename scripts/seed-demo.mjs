@@ -1,0 +1,192 @@
+/**
+ * Seed de DÉMO NeoTravel — ~60 leads répartis sur 30 jours pour faire vivre le
+ * dashboard (graphe d'activité, courbe pipeline, deltas, donut, relances, devis).
+ *
+ * 100% réversible : toutes les données portent le marqueur email @demo.neotravel.test.
+ *   Seed   : node --env-file=.env.local scripts/seed-demo.mjs
+ *   Purge  : node --env-file=.env.local scripts/purge-demo.mjs
+ */
+import { createClient } from "@supabase/supabase-js";
+
+const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
+
+const DEMO_DOMAIN = "demo.neotravel.test";
+const N = 60;
+
+const rnd = (a, b) => a + Math.random() * (b - a);
+const rndi = (a, b) => Math.floor(rnd(a, b + 1));
+const pick = (arr) => arr[rndi(0, arr.length - 1)];
+const round10 = (n) => Math.round(n / 10) * 10;
+const isoDate = (d) => d.toISOString().slice(0, 10);
+
+const PRENOMS = ["Camille", "Lucas", "Inès", "Hugo", "Sarah", "Théo", "Léa", "Nathan", "Manon", "Yanis", "Chloé", "Adam", "Jade", "Maël", "Emma", "Noé", "Lina", "Gabriel", "Rania", "Sacha"];
+const NOMS = ["Martin", "Bernard", "Dubois", "Moreau", "Laurent", "Simon", "Michel", "Garcia", "Roux", "Vincent", "Fournier", "Girard", "Bonnet", "Lambert", "Faure", "Mercier", "Blanc", "Guerin", "Boyer", "Rousseau"];
+const ROUTES = [
+  { from: "Bordeaux", to: "Paris", km: 580 },
+  { from: "Lyon", to: "Marseille", km: 315 },
+  { from: "Lille", to: "Rennes", km: 560 },
+  { from: "Paris", to: "Lyon", km: 460 },
+  { from: "Toulouse", to: "Bordeaux", km: 245 },
+  { from: "Nantes", to: "Paris", km: 385 },
+  { from: "Nice", to: "Marseille", km: 200 },
+  { from: "Strasbourg", to: "Paris", km: 490 },
+  { from: "Bordeaux", to: "Arcachon", km: 60 },
+  { from: "Paris", to: "Versailles", km: 25 },
+  { from: "Lyon", to: "Chamonix", km: 220 },
+  { from: "Rennes", to: "Saint-Malo", km: 70 },
+];
+const PRESTATIONS = ["transfert", "navette", "scolaire", "seminaire", "tourisme", "mise_a_disposition"];
+const CANAUX = ["conversation_ia", "conversation_ia", "conversation_ia", "formulaire", "telephone", "email"];
+
+// Funnel pondéré par ancienneté : récent → tôt dans le pipeline, ancien → abouti.
+function statutFor(dayOffset) {
+  if (dayOffset <= 5) return pick(["new", "new", "new", "qualified", "qualified", "contacted"]);
+  if (dayOffset <= 15) return pick(["qualified", "contacted", "contacted", "quote_sent", "quote_sent", "negotiation"]);
+  return pick(["quote_sent", "negotiation", "won", "won", "lost", "contacted"]);
+}
+
+function panierFor(km, pax) {
+  const transport = km > 180 ? km * 2 * 2.5 : 250 + km * 3;
+  const capFactor = pax <= 19 ? 0.95 : pax <= 53 ? 1.0 : pax <= 63 ? 1.15 : 1.3;
+  return round10(transport * capFactor * 1.15 * 1.1); // marge + tva
+}
+
+const { data: comms } = await sb.from("commerciaux").select("id").eq("actif", true);
+const commIds = (comms ?? []).map((c) => c.id);
+
+let created = 0;
+let devisCount = 0;
+let relancesCount = 0;
+const now = Date.now();
+let devSeq = 41000;
+
+for (let i = 0; i < N; i++) {
+  // Ancienneté biaisée vers le récent (delta hebdo positif + barres récentes pleines).
+  const dayOffset = Math.floor(29 * Math.pow(Math.random(), 1.4));
+  const createdAt = new Date(now - dayOffset * 86_400_000 - rndi(0, 23) * 3_600_000);
+  const statut = statutFor(dayOffset);
+
+  const route = pick(ROUTES);
+  const presta = pick(PRESTATIONS);
+  const isMAD = presta === "mise_a_disposition";
+  const pax = rndi(8, 75);
+  const typeDeplacement = isMAD ? pick(["aller_retour", "circuit"]) : pick(["aller_simple", "aller_retour", "aller_retour", "circuit"]);
+  const depart = new Date(createdAt.getTime() + rndi(10, 90) * 86_400_000);
+  const retour = typeDeplacement === "aller_simple" ? null : new Date(depart.getTime() + rndi(1, 4) * 86_400_000);
+  const panier = panierFor(route.km, pax);
+
+  const prenom = pick(PRENOMS);
+  const nom = pick(NOMS);
+  const email = `${prenom}.${nom}.${i}@${DEMO_DOMAIN}`.toLowerCase();
+
+  // 1) client
+  const { data: cli, error: cliErr } = await sb
+    .from("clients")
+    .insert({ nom: `${prenom} ${nom}`, email, telephone: `06${rndi(10, 99)}${rndi(100000, 999999)}`, consentement_rgpd: true, created_at: createdAt.toISOString() })
+    .select("id")
+    .single();
+  if (cliErr) {
+    console.log("client ERR", cliErr.message);
+    continue;
+  }
+
+  // 2) demande
+  const { data: dem, error: demErr } = await sb
+    .from("demandes")
+    .insert({
+      client_id: cli.id,
+      commercial_id: statut === "new" ? null : commIds.length ? pick(commIds) : null,
+      statut,
+      type_deplacement: typeDeplacement,
+      ville_depart: route.from,
+      ville_arrivee: isMAD ? null : route.to,
+      date_depart: isoDate(depart),
+      date_retour: retour ? isoDate(retour) : null,
+      nb_voyageurs: pax,
+      type_prestation: presta,
+      canal: pick(CANAUX),
+      complexite: "simple",
+      distance_km: route.km,
+      valeur_panier_estimee: panier,
+      date_demande: isoDate(createdAt),
+      created_at: createdAt.toISOString(),
+    })
+    .select("id")
+    .single();
+  if (demErr) {
+    console.log("demande ERR", demErr.message);
+    continue;
+  }
+  created++;
+
+  // 3) devis (estimation pour les qualifiés/contactés ; ferme pour quote_sent+)
+  const ht = Math.round((panier / 1.1) * 100) / 100;
+  const tva = Math.round((panier - ht) * 100) / 100;
+  const devisCreatedAt = new Date(createdAt.getTime() + rndi(1, 3) * 86_400_000);
+  const mkLignes = () => [
+    { libelle: "Transport", montant: round10(ht * 0.82) },
+    { libelle: "Marge commerciale (+15%)", montant: round10(ht * 0.13) },
+    { libelle: `TVA (10%)`, montant: tva },
+  ];
+
+  if (["qualified", "contacted"].includes(statut) && Math.random() < 0.6) {
+    await sb.from("devis").insert({ demande_id: dem.id, type: "estimation", prix_ht: ht, tva, prix_ttc: panier, lignes: mkLignes(), masque: true, created_at: devisCreatedAt.toISOString() });
+    devisCount++;
+  }
+
+  if (["quote_sent", "negotiation", "won"].includes(statut)) {
+    const numero = `DEV-2026-${devSeq++}`;
+    // quote_sent : 70% envoyés (avec relances), 30% prêts à envoyer (non envoyés)
+    const sent = statut !== "quote_sent" || Math.random() < 0.7;
+    const envoyeAt = sent ? new Date(devisCreatedAt.getTime() + rndi(0, 2) * 86_400_000) : null;
+    const { data: dv } = await sb
+      .from("devis")
+      .insert({
+        demande_id: dem.id,
+        commercial_id: commIds.length ? pick(commIds) : null,
+        type: "ferme",
+        numero,
+        prix_ht: ht,
+        tva,
+        prix_ttc: panier,
+        lignes: mkLignes(),
+        envoye_at: envoyeAt ? envoyeAt.toISOString() : null,
+        destinataire: envoyeAt ? email : null,
+        created_at: devisCreatedAt.toISOString(),
+      })
+      .select("id")
+      .single();
+    devisCount++;
+
+    // 4) relances pour les devis envoyés (J+1/J+3/J+7), certaines en retard
+    if (dv && envoyeAt) {
+      for (const [n, type] of [[1, "j1"], [3, "j3"], [7, "j7"]]) {
+        if (Math.random() < 0.7) {
+          const due = new Date(envoyeAt.getTime() + n * 86_400_000);
+          const isPast = due.getTime() < now;
+          // garde quelques relances passées en "planifiée" (= en retard) pour le KPI
+          const statutRel = isPast ? (Math.random() < 0.5 ? "envoyee" : "planifiee") : "planifiee";
+          await sb.from("relances").insert({
+            demande_id: dem.id,
+            devis_id: dv.id,
+            type,
+            statut: statutRel,
+            planifiee_pour: due.toISOString(),
+            envoyee_at: statutRel === "envoyee" ? due.toISOString() : null,
+            canal: "email",
+            destinataire: email,
+            objet: `Relance J+${n} — devis ${numero}`,
+          });
+          relancesCount++;
+        }
+      }
+    }
+  }
+
+  if (i % 10 === 9) console.log(`… ${i + 1}/${N}`);
+}
+
+console.log(`\nSeed démo terminé : ${created} demandes, ${devisCount} devis, ${relancesCount} relances.`);
+console.log(`Toutes marquées via email @${DEMO_DOMAIN} — purge : node --env-file=.env.local scripts/purge-demo.mjs`);

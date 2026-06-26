@@ -75,21 +75,21 @@ export default function Simulateur() {
     <main className="mx-auto max-w-6xl px-4 py-10">
       <header className="mb-8">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">NeoTravel · moteur de devis</p>
-          <a href="/" className="text-sm font-medium text-emerald-700 underline underline-offset-2">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--forest)]">NeoTravel · moteur de devis</p>
+          <a href="/" className="text-sm font-medium text-[var(--forest)] underline underline-offset-2">
             ← Retour au chat
           </a>
         </div>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Simulateur tarifaire</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-600">
-          Le prix vient <strong>uniquement du code</strong> (fonction <code className="rounded bg-slate-100 px-1 py-0.5 text-[0.8em]">calculerDevis()</code> déterministe,
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--ink)]">Simulateur tarifaire</h1>
+        <p className="mt-2 max-w-2xl text-sm text-[var(--muted)]">
+          Le prix vient <strong>uniquement du code</strong> (fonction <code className="rounded bg-[var(--grey)] px-1 py-0.5 text-[0.8em]">calculerDevis()</code> déterministe,
           jamais du LLM). Réglez les paramètres : tout est recalculé en direct et chaque étape est tracée.
         </p>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         {/* ── Panneau de réglages ───────────────────────────────────────── */}
-        <section className="space-y-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="space-y-6 rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
           {/* Type */}
           <Field label="Type de déplacement">
             <div className="grid grid-cols-3 gap-1.5">
@@ -102,7 +102,7 @@ export default function Simulateur() {
                   key={v}
                   onClick={() => setType(v)}
                   className={`rounded-lg px-2 py-2 text-xs font-medium transition ${
-                    type === v ? "bg-emerald-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    type === v ? "bg-[var(--ink)] text-[var(--cream)] shadow-sm" : "bg-[var(--grey)] text-[var(--muted)] hover:bg-[var(--line-2)]"
                   }`}
                 >
                   {lib}
@@ -120,31 +120,31 @@ export default function Simulateur() {
               step={1}
               value={distance}
               onChange={(e) => setDistance(Number(e.target.value))}
-              className="w-full accent-emerald-600"
+              className="w-full accent-[var(--forest)]"
             />
             <div className="mt-2 flex gap-2">
               <input
                 value={depart}
                 onChange={(e) => setDepart(e.target.value)}
                 placeholder="Départ"
-                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                className="w-full rounded-lg border border-[var(--line)] px-2 py-1.5 text-sm"
               />
               <input
                 value={arrivee}
                 onChange={(e) => setArrivee(e.target.value)}
                 placeholder="Arrivée"
-                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                className="w-full rounded-lg border border-[var(--line)] px-2 py-1.5 text-sm"
               />
               <button
                 onClick={estimerDistance}
                 disabled={geo?.loading}
-                className="shrink-0 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                className="shrink-0 rounded-lg bg-[var(--ink)] px-3 py-1.5 text-xs font-medium text-[var(--cream)] disabled:opacity-50"
               >
                 {geo?.loading ? "…" : "Estimer"}
               </button>
             </div>
             {geo && !geo.loading && (
-              <p className="mt-1 text-[0.7rem] text-slate-500">
+              <p className="mt-1 text-[0.7rem] text-[var(--muted)]">
                 {distance} km — source&nbsp;: <span className="font-medium">{geo.source}</span>
               </p>
             )}
@@ -159,10 +159,10 @@ export default function Simulateur() {
               step={1}
               value={pax}
               onChange={(e) => setPax(Number(e.target.value))}
-              className="w-full accent-emerald-600"
+              className="w-full accent-[var(--forest)]"
             />
             {pax > M.capacite_max && (
-              <p className="mt-1 text-[0.7rem] font-medium text-amber-600">
+              <p className="mt-1 text-[0.7rem] font-medium text-[#8a5a1f]">
                 &gt; {M.capacite_max} passagers → multi-véhicules, flux manuel commercial.
               </p>
             )}
@@ -175,9 +175,9 @@ export default function Simulateur() {
               value={dateDepart}
               min={TODAY}
               onChange={(e) => setDateDepart(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+              className="w-full rounded-lg border border-[var(--line)] px-2 py-1.5 text-sm"
             />
-            <p className="mt-1 text-[0.7rem] text-slate-500">Dans {ecartJours} jours · demande émise le {TODAY}</p>
+            <p className="mt-1 text-[0.7rem] text-[var(--muted)]">Dans {ecartJours} jours · demande émise le {TODAY}</p>
           </Field>
 
           {type === "aller_retour" && (
@@ -187,7 +187,7 @@ export default function Simulateur() {
                 value={dateRetour}
                 min={dateDepart}
                 onChange={(e) => setDateRetour(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                className="w-full rounded-lg border border-[var(--line)] px-2 py-1.5 text-sm"
               />
             </Field>
           )}
@@ -218,7 +218,7 @@ export default function Simulateur() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</label>
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">{label}</label>
       {children}
     </div>
   );
@@ -226,17 +226,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function ResultatChiffre({ devis }: { devis: DevisResult }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white shadow-sm">
       {/* En-tête TTC */}
-      <div className="flex flex-wrap items-end justify-between gap-4 bg-emerald-600 px-6 py-5 text-white">
+      <div className="flex flex-wrap items-end justify-between gap-4 bg-[var(--ink)] px-6 py-5 text-[var(--cream)]">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-emerald-100">Estimation indicative TTC</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--cream)]">Estimation indicative TTC</p>
           <p className="mt-1 text-4xl font-bold tracking-tight">{eur(devis.prix_ttc)}</p>
         </div>
-        <div className="text-right text-sm text-emerald-50">
+        <div className="text-right text-sm text-[var(--cream)]">
           <p>HT&nbsp;: {eur(devis.prix_ht)}</p>
           <p>TVA&nbsp;: {eur(devis.tva)}</p>
-          <p className="mt-1 text-xs text-emerald-100">
+          <p className="mt-1 text-xs text-[var(--cream)]">
             {devis.meta.distance_km} km · {devis.meta.type_vehicule.replace(/_/g, " ")}
           </p>
         </div>
@@ -244,16 +244,16 @@ function ResultatChiffre({ devis }: { devis: DevisResult }) {
 
       {/* Décomposition ligne à ligne */}
       <div className="px-6 py-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Décomposition (audit)</p>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--faint)]">Décomposition (audit)</p>
         <table className="w-full text-sm">
           <tbody>
             {devis.lignes.map((l, i) => {
               const fort = /Prix TTC|Prix HT|Sous-total/i.test(l.libelle);
               const neg = l.montant < 0;
               return (
-                <tr key={i} className={fort ? "border-t border-slate-200 font-semibold text-slate-900" : "text-slate-600"}>
+                <tr key={i} className={fort ? "border-t border-[var(--line)] font-semibold text-[var(--ink)]" : "text-[var(--muted)]"}>
                   <td className="py-1.5 pr-4">{l.libelle}</td>
-                  <td className={`py-1.5 text-right tabular-nums ${neg ? "text-emerald-600" : ""}`}>
+                  <td className={`py-1.5 text-right tabular-nums ${neg ? "text-[var(--forest)]" : ""}`}>
                     {neg ? "−" : ""}
                     {eur(Math.abs(l.montant))}
                   </td>
@@ -268,10 +268,10 @@ function ResultatChiffre({ devis }: { devis: DevisResult }) {
           {devis.coefficients.map((c) => (
             <span
               key={c.nom}
-              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[0.7rem] font-medium text-slate-600"
+              className="inline-flex items-center gap-1 rounded-full bg-[var(--grey)] px-2.5 py-1 text-[0.7rem] font-medium text-[var(--muted)]"
             >
               {c.nom} ×{c.valeur}
-              {c.detail ? <span className="text-slate-400">· {c.detail}</span> : null}
+              {c.detail ? <span className="text-[var(--faint)]">· {c.detail}</span> : null}
             </span>
           ))}
         </div>
@@ -282,19 +282,19 @@ function ResultatChiffre({ devis }: { devis: DevisResult }) {
 
 function FluxManuel({ code, message }: { code: string; message: string }) {
   return (
-    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
-      <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Pas d&apos;estimation automatique</p>
-      <p className="mt-2 text-lg font-semibold text-amber-900">Ce dossier part en flux manuel commercial</p>
-      <p className="mt-1 text-sm text-amber-800">{message}</p>
-      <p className="mt-3 inline-block rounded-full bg-amber-100 px-2.5 py-1 font-mono text-[0.7rem] text-amber-700">{code}</p>
+    <div className="rounded-2xl border border-[#e7d4a8] bg-[#f6ead0] p-6">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#8a5a1f]">Pas d&apos;estimation automatique</p>
+      <p className="mt-2 text-lg font-semibold text-[#6b4416]">Ce dossier part en flux manuel commercial</p>
+      <p className="mt-1 text-sm text-[#7a4f1a]">{message}</p>
+      <p className="mt-3 inline-block rounded-full bg-[#efdcb4] px-2.5 py-1 font-mono text-[0.7rem] text-[#8a5a1f]">{code}</p>
     </div>
   );
 }
 
 function Carte({ titre, children }: { titre: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{titre}</p>
+    <div className="rounded-2xl border border-[var(--line)] bg-white p-4 shadow-sm">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--faint)]">{titre}</p>
       {children}
     </div>
   );
@@ -312,11 +312,11 @@ function MatriceSaison({ moisActif }: { moisActif: number }) {
             <div
               key={mois}
               className={`rounded-md px-1 py-1.5 text-center text-[0.7rem] ${
-                actif ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300" : "bg-slate-50 text-slate-500"
+                actif ? "bg-[var(--ink)] text-[var(--cream)] shadow-sm ring-2 ring-[var(--lime-deep)]" : "bg-[var(--bg-soft)] text-[var(--muted)]"
               }`}
             >
               <div className="font-medium">{m}</div>
-              <div className={actif ? "text-emerald-50" : "text-slate-400"}>×{s.coeff}</div>
+              <div className={actif ? "text-[var(--cream)]" : "text-[var(--faint)]"}>×{s.coeff}</div>
             </div>
           );
         })}
@@ -335,7 +335,7 @@ function MatriceAnticipation({ ecart, actif }: { ecart: number; actif: boolean }
             <li
               key={p.code}
               className={`flex items-center justify-between rounded-md px-2 py-1.5 text-xs ${
-                hit ? "bg-emerald-600 text-white" : "bg-slate-50 text-slate-500"
+                hit ? "bg-[var(--ink)] text-[var(--cream)]" : "bg-[var(--bg-soft)] text-[var(--muted)]"
               }`}
             >
               <span>{p.libelle}</span>
@@ -358,7 +358,7 @@ function MatriceCapacite({ pax }: { pax: number }) {
             <li
               key={p.libelle}
               className={`flex items-center justify-between rounded-md px-2 py-1.5 text-xs ${
-                hit ? "bg-emerald-600 text-white" : "bg-slate-50 text-slate-500"
+                hit ? "bg-[var(--ink)] text-[var(--cream)]" : "bg-[var(--bg-soft)] text-[var(--muted)]"
               }`}
             >
               <span>{p.libelle.replace(/\s*\([^)]*\)/, "")} · {p.type_vehicule.replace(/_/g, " ")}</span>
@@ -367,7 +367,7 @@ function MatriceCapacite({ pax }: { pax: number }) {
           );
         })}
         {pax > M.capacite_max && (
-          <li className="rounded-md bg-amber-100 px-2 py-1.5 text-xs font-medium text-amber-700">
+          <li className="rounded-md bg-[#efdcb4] px-2 py-1.5 text-xs font-medium text-[#8a5a1f]">
             &gt; {M.capacite_max} → multi-véhicules (manuel)
           </li>
         )}
@@ -382,12 +382,12 @@ function MatriceGrille({ distance }: { distance: number }) {
   return (
     <Carte titre={`Base transfert simple ${auDela ? "(formule > 180 km)" : "(grille forfait)"}`}>
       {auDela ? (
-        <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+        <div className="rounded-lg bg-[var(--bg-soft)] p-3 text-sm text-[var(--muted)]">
           <p className="font-mono text-[0.8rem]">
             ({distance} × 2) × {M.prix_km_au_dela} €/km
           </p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{eur(distance * 2 * M.prix_km_au_dela)}</p>
-          <p className="mt-1 text-[0.7rem] text-slate-400">km aller + retour à vide · avant AR/coefficients</p>
+          <p className="mt-1 text-2xl font-bold text-[var(--ink)]">{eur(distance * 2 * M.prix_km_au_dela)}</p>
+          <p className="mt-1 text-[0.7rem] text-[var(--faint)]">km aller + retour à vide · avant AR/coefficients</p>
         </div>
       ) : (
         <div className="space-y-0.5">
@@ -395,16 +395,16 @@ function MatriceGrille({ distance }: { distance: number }) {
             const hit = distance <= f.km_max && (M.forfait[M.forfait.indexOf(f) - 1]?.km_max ?? 0) < distance;
             return (
               <div key={f.km_max} className="flex items-center gap-2">
-                <span className={`w-12 shrink-0 text-right text-[0.7rem] tabular-nums ${hit ? "font-semibold text-emerald-700" : "text-slate-400"}`}>
+                <span className={`w-12 shrink-0 text-right text-[0.7rem] tabular-nums ${hit ? "font-semibold text-[var(--forest)]" : "text-[var(--faint)]"}`}>
                   ≤{f.km_max}
                 </span>
-                <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-3 flex-1 overflow-hidden rounded-full bg-[var(--grey)]">
                   <div
-                    className={hit ? "h-full bg-emerald-500" : "h-full bg-slate-300"}
+                    className={hit ? "h-full bg-[var(--forest)]" : "h-full bg-[var(--line-2)]"}
                     style={{ width: `${(f.prix / maxPrix) * 100}%` }}
                   />
                 </div>
-                <span className={`w-12 text-right text-[0.7rem] tabular-nums ${hit ? "font-semibold text-emerald-700" : "text-slate-400"}`}>
+                <span className={`w-12 text-right text-[0.7rem] tabular-nums ${hit ? "font-semibold text-[var(--forest)]" : "text-[var(--faint)]"}`}>
                   {f.prix}€
                 </span>
               </div>
