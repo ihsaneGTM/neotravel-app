@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { ArrowLeft, Sparkles, MapPin, Users, Calendar, Phone, Mail, ArrowRight, Zap, Send, CircleCheck, PhoneCall } from "lucide-react";
+import { ArrowLeft, Sparkles, MapPin, Users, Calendar, Phone, Mail, ArrowRight, Zap, Send, CircleCheck, PhoneCall, Clock } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { computeScore, niveauUrgence } from "@/lib/pipeline/scoring";
 import { STATUTS, STATUT_LABEL, type Statut } from "@/lib/ui/statuts";
+import { leadAction } from "@/lib/pipeline/lead-action";
+import { slaInfo, WAIT_TIER_META } from "@/lib/pipeline/sla";
 import { eur, eur2, depuis } from "@/lib/ui/format";
 import { resendConfigured } from "@/lib/email/resend";
 import { Panel, StatusBadge, UrgenceBadge, ScorePill } from "@/components/office/ui";
@@ -41,6 +43,7 @@ type Demande = {
   complexite: string;
   distance_km: number | null;
   valeur_panier_estimee: number | null;
+  created_at: string;
   clients: { prenom: string | null; nom: string; email: string | null; telephone: string | null; consentement_rgpd: boolean } | null;
   commerciaux: { nom: string; email: string } | null;
 };
@@ -60,7 +63,7 @@ type Devis = {
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [{ data: dRaw }, { data: devisRaw }, { data: appelsRaw }, { data: relancesRaw }] = await Promise.all([
+  const [{ data: dRaw }, { data: devisRaw }, { data: appelsRaw }, { data: relancesRaw }, { data: histoRaw }] = await Promise.all([
     supabaseAdmin.from("demandes").select("*, clients(prenom, nom, email, telephone, consentement_rgpd), commerciaux(nom, email)").eq("id", id).single(),
     supabaseAdmin
       .from("devis")
@@ -69,7 +72,9 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
       .order("created_at", { ascending: false }),
     supabaseAdmin.from("appels").select("id, transcript, resume, duree_sec, source, created_at").eq("demande_id", id).order("created_at", { ascending: false }),
     supabaseAdmin.from("relances").select("statut, planifiee_pour").eq("demande_id", id),
+    supabaseAdmin.from("statut_historique").select("changed_at").eq("demande_id", id).order("changed_at", { ascending: false }).limit(1),
   ]);
+  const enteredAt = (histoRaw?.[0] as { changed_at: string } | undefined)?.changed_at ?? null;
   // Avancement des relances : échues = envoyées OU date passée (pour « En cours de relance » / « À rappeler »).
   const relancesRows = (relancesRaw ?? []) as { statut: string; planifiee_pour: string | null }[];
   const relancesTotal = relancesRows.length;
@@ -106,6 +111,11 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     telephone: d.clients?.telephone,
   });
   const urgence = niveauUrgence(d.date_depart, d.date_demande);
+  // SLA d'attente : ancienneté de la demande + temps passé dans l'étape actuelle.
+  const action = leadAction(d.statut, { devisPret: !!devis && !devis.envoye_at, relancesTotal, relancesDues });
+  const sla = slaInfo(d.created_at, enteredAt, action.owner);
+  const slaMeta = WAIT_TIER_META[sla.tier];
+  const slaAlert = sla.tier === "late" || sla.tier === "breach";
 
   const suggestions: string[] = [];
   if (s.score >= 75) suggestions.push("Prioriser le rappel — lead à fort potentiel");
@@ -136,6 +146,22 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               {d.clients?.telephone && <span className="flex items-center gap-1"><Phone className="h-4 w-4" /> {d.clients.telephone}</span>}
               {d.clients?.email && <span className="flex items-center gap-1"><Mail className="h-4 w-4" /> {d.clients.email}</span>}
             </div>
+            {/* SLA d'attente — « ne pas faire attendre le prospect » */}
+            {sla.tier !== "none" && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold ${
+                    slaAlert ? slaMeta.chip : "bg-[var(--grey)] text-[var(--muted)]"
+                  } ${slaMeta.pulse ? "animate-pulse" : ""}`}
+                >
+                  <Clock className="h-4 w-4" /> {slaAlert ? sla.status : "Dans les délais"}
+                </span>
+                <span className="text-[var(--faint)]">
+                  Demande reçue il y a <span className="font-medium text-[var(--muted)]">{sla.ageLabel}</span>
+                  {sla.columnLabel && <> · {action.owner === "commercial" ? "à traiter depuis" : "dans cette étape depuis"} <span className="font-medium text-[var(--muted)]">{sla.columnLabel}</span></>}
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">

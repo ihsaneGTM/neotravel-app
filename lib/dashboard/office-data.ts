@@ -18,6 +18,17 @@ async function relancesParDemande(sb: SupabaseClient): Promise<Map<string, { tot
   return m;
 }
 
+/** Dernière entrée de chaque demande dans sa colonne actuelle (= max changed_at du journal). */
+async function enteredAtParDemande(sb: SupabaseClient): Promise<Map<string, string>> {
+  const { data } = await sb.from("statut_historique").select("demande_id, changed_at");
+  const m = new Map<string, string>();
+  for (const r of (data ?? []) as { demande_id: string; changed_at: string }[]) {
+    const cur = m.get(r.demande_id);
+    if (!cur || new Date(r.changed_at).getTime() > new Date(cur).getTime()) m.set(r.demande_id, r.changed_at);
+  }
+  return m;
+}
+
 export interface DemandeRow {
   id: string;
   statut: Statut;
@@ -273,6 +284,8 @@ export interface LeadListItem {
   valeur: number | null;
   commercial: string | null;
   created_at: string;
+  /** Entrée dans la colonne actuelle (journal des transitions) — null si inconnu. */
+  entered_at: string | null;
   /** Un devis ferme est généré et prêt à envoyer (pour distinguer "générer" vs "envoyer"). */
   devis_pret: boolean;
   /** Avancement des relances (pour les colonnes « En cours de relance » / « À rappeler »). */
@@ -287,7 +300,12 @@ async function devisFermesPrets(sb: SupabaseClient): Promise<Set<string>> {
 }
 
 export async function getLeads(sb: SupabaseClient): Promise<LeadListItem[]> {
-  const [demandes, prets, relances] = await Promise.all([fetchDemandes(sb), devisFermesPrets(sb), relancesParDemande(sb)]);
+  const [demandes, prets, relances, entrees] = await Promise.all([
+    fetchDemandes(sb),
+    devisFermesPrets(sb),
+    relancesParDemande(sb),
+    enteredAtParDemande(sb),
+  ]);
   return demandes.map((d) => {
     const rel = relances.get(d.id) ?? { total: 0, dues: 0 };
     return {
@@ -305,6 +323,7 @@ export async function getLeads(sb: SupabaseClient): Promise<LeadListItem[]> {
       valeur: d.valeur_panier_estimee != null ? Number(d.valeur_panier_estimee) : null,
       commercial: d.commerciaux?.nom ?? null,
       created_at: d.created_at,
+      entered_at: entrees.get(d.id) ?? null,
       devis_pret: prets.has(d.id),
       relances_total: rel.total,
       relances_dues: rel.dues,

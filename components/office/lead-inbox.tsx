@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, List, LayoutGrid, MapPin, Users, Calendar, Sparkles, PhoneCall, Loader2 } from "lucide-react";
+import { Search, List, LayoutGrid, MapPin, Users, Calendar, Sparkles, PhoneCall, Loader2, Clock } from "lucide-react";
 import type { LeadListItem } from "@/lib/dashboard/office-data";
 import { STATUTS, STATUT_LABEL, STATUT_META, type Statut } from "@/lib/ui/statuts";
 import { leadAction, isCommercialAction, boardColumnOf, BOARD_COLUMNS, type BoardKey } from "@/lib/pipeline/lead-action";
+import { slaInfo, priorityRank, WAIT_TIER_META, type SlaInfo } from "@/lib/pipeline/sla";
 import { eur } from "@/lib/ui/format";
 import { StatusBadge, UrgenceBadge, ScorePill, OwnerBadge } from "./ui";
 
@@ -16,8 +17,12 @@ const ctxOf = (l: LeadListItem) => ({ devisPret: l.devis_pret, relancesTotal: l.
 const actionOf = (l: LeadListItem) => leadAction(l.statut, ctxOf(l));
 /** Colonne board (timeline) d'un lead. */
 const boardOf = (l: LeadListItem) => boardColumnOf(l.statut, ctxOf(l));
+/** État SLA (délai d'attente) d'un lead. */
+const slaOf = (l: LeadListItem) => slaInfo(l.created_at, l.entered_at, actionOf(l).owner);
+/** Rang de priorité = score business + pression d'attente. */
+const prioOf = (l: LeadListItem) => priorityRank(l.score, Date.now() - new Date(l.created_at).getTime(), actionOf(l).owner);
 
-type Tri = "score" | "valeur" | "date";
+type Tri = "priorite" | "score" | "valeur" | "date";
 
 const PREFS_KEY = "neotravel:inbox-prefs";
 
@@ -25,7 +30,7 @@ export function LeadInbox({ leads }: { leads: LeadListItem[] }) {
   const [q, setQ] = useState("");
   const [filtre, setFiltre] = useState<Statut | "all">("all");
   const [vue, setVue] = useState<"list" | "kanban">("kanban");
-  const [tri, setTri] = useState<Tri>("score");
+  const [tri, setTri] = useState<Tri>("priorite");
 
   // Restaure la vue/filtre/tri d'où on venait (persistés entre navigations).
   useEffect(() => {
@@ -73,12 +78,20 @@ export function LeadInbox({ leads }: { leads: LeadListItem[] }) {
     let r = leads.filter((l) => (filtre === "all" ? true : l.statut === filtre));
     if (term) r = r.filter((l) => `${l.client} ${l.trajet} ${l.resume}`.toLowerCase().includes(term));
     r = [...r].sort((a, b) =>
-      tri === "score" ? b.score - a.score : tri === "valeur" ? (b.valeur ?? 0) - (a.valeur ?? 0) : +new Date(b.created_at) - +new Date(a.created_at)
+      tri === "priorite"
+        ? prioOf(b) - prioOf(a)
+        : tri === "score"
+          ? b.score - a.score
+          : tri === "valeur"
+            ? (b.valeur ?? 0) - (a.valeur ?? 0)
+            : +new Date(b.created_at) - +new Date(a.created_at)
     );
     return r;
   }, [leads, q, filtre, tri]);
 
   const nouveaux = counts["new"] ?? 0;
+  // Compteur SLA : leads où l'équipe doit agir et qui patientent au-delà des 24 h cibles.
+  const enRetard = useMemo(() => leads.filter((l) => { const t = slaOf(l).tier; return t === "late" || t === "breach"; }).length, [leads]);
 
   return (
     <>
@@ -89,8 +102,13 @@ export function LeadInbox({ leads }: { leads: LeadListItem[] }) {
           </span>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-[var(--ink)]">Demandes</h1>
-            <p className="text-sm text-[var(--muted)]">
-              {leads.length} leads · {nouveaux} nouveau{nouveaux > 1 ? "x" : ""}
+            <p className="flex flex-wrap items-center gap-x-2 text-sm text-[var(--muted)]">
+              <span>{leads.length} leads · {nouveaux} nouveau{nouveaux > 1 ? "x" : ""}</span>
+              {enRetard > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--terracotta-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--terracotta-ink)]">
+                  <Clock className="h-3 w-3" /> {enRetard} en attente &gt; 24 h
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -112,6 +130,7 @@ export function LeadInbox({ leads }: { leads: LeadListItem[] }) {
           onChange={(e) => setTri(e.target.value as Tri)}
           className="rounded-xl border border-[var(--line)] bg-white px-3 py-2.5 text-sm text-[var(--muted)] outline-none"
         >
+          <option value="priorite">Trier par priorité</option>
           <option value="score">Trier par score</option>
           <option value="valeur">Trier par valeur</option>
           <option value="date">Trier par date</option>
@@ -170,6 +189,24 @@ function Chip({ active, onClick, label, dot }: { active: boolean; onClick: () =>
   );
 }
 
+/** Horloge d'attente : ancienneté de la demande, colorée selon le palier SLA. */
+function WaitChip({ sla, dense }: { sla: SlaInfo; dense?: boolean }) {
+  if (sla.tier === "none") return null;
+  const meta = WAIT_TIER_META[sla.tier];
+  const colored = sla.tier === "late" || sla.tier === "breach";
+  const title = `${sla.status} · demande reçue il y a ${sla.ageLabel}${sla.columnLabel ? ` · dans cette étape depuis ${sla.columnLabel}` : ""}`;
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 rounded-full font-semibold ${dense ? "text-[0.66rem]" : "text-xs"} ${
+        colored ? `px-1.5 py-0.5 ${meta.chip}` : "text-[var(--faint)]"
+      } ${meta.pulse ? "animate-pulse" : ""}`}
+    >
+      <Clock className={dense ? "h-3 w-3" : "h-3.5 w-3.5"} /> {sla.ageLabel}
+    </span>
+  );
+}
+
 function LeadRow({ l }: { l: LeadListItem }) {
   return (
     <Link href={`/leads/${l.id}`} className="nt-card nt-lift block p-4">
@@ -179,6 +216,7 @@ function LeadRow({ l }: { l: LeadListItem }) {
             <span className="font-semibold text-[var(--ink)]">{l.client}</span>
             <StatusBadge statut={l.statut} />
             <OwnerBadge action={actionOf(l)} />
+            <WaitChip sla={slaOf(l)} />
             <UrgenceBadge niveau={l.urgence} />
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--muted)]">
@@ -213,6 +251,7 @@ function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statu
         const isHi = bc.key === hiCol;
         const commercialCol = bc.owner === "commercial";
         const actions = commercialCol ? col.length : 0;
+        const enRetard = col.filter((l) => { const t = slaOf(l).tier; return t === "late" || t === "breach"; }).length;
         // Colonnes sans action = grisées (juste attendre / auto / terminé) ; colonnes commerciales = pleine couleur.
         const greyed = !commercialCol;
         return (
@@ -227,16 +266,26 @@ function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statu
             <div className="mb-3 flex items-center gap-2">
               <span className="h-2 w-2 rounded-full" style={{ background: greyed ? "var(--line-2)" : bc.hex }} />
               <span className={`text-sm font-semibold ${greyed ? "text-[var(--faint)]" : "text-[var(--ink)]"}`}>{bc.label}</span>
-              {commercialCol && actions > 0 ? (
-                <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-[var(--lime-soft)] px-2 py-0.5 text-[0.68rem] font-bold text-[var(--forest)] ring-1 ring-[var(--lime-deep)]">
-                  {actions} à faire
-                </span>
-              ) : (
-                <span className="ml-auto flex items-center gap-1 text-xs text-[var(--faint)]">
-                  {greyed && bc.owner !== "done" && <span className="text-[0.62rem] uppercase tracking-wide">{bc.owner === "ia" ? "auto" : "attente"}</span>}
-                  {col.length}
-                </span>
-              )}
+              <span className="ml-auto flex items-center gap-1.5">
+                {enRetard > 0 && (
+                  <span
+                    title={`${enRetard} demande(s) en attente depuis plus de 24 h`}
+                    className="inline-flex items-center gap-1 rounded-full bg-[var(--terracotta-soft)] px-2 py-0.5 text-[0.68rem] font-bold text-[var(--terracotta-ink)]"
+                  >
+                    <Clock className="h-3 w-3" /> {enRetard}
+                  </span>
+                )}
+                {commercialCol && actions > 0 ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--lime-soft)] px-2 py-0.5 text-[0.68rem] font-bold text-[var(--forest)] ring-1 ring-[var(--lime-deep)]">
+                    {actions} à faire
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-xs text-[var(--faint)]">
+                    {greyed && bc.owner !== "done" && <span className="text-[0.62rem] uppercase tracking-wide">{bc.owner === "ia" ? "auto" : "attente"}</span>}
+                    {col.length}
+                  </span>
+                )}
+              </span>
             </div>
             <div className={`space-y-3 ${greyed ? "opacity-80" : ""}`}>
               {col.length === 0 && (
@@ -257,7 +306,7 @@ function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statu
                         <span className="text-sm font-semibold text-[var(--ink)]">{l.client}</span>
                         <ScorePill score={l.score} />
                       </div>
-                      <div className="mt-2"><OwnerBadge action={act} /></div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5"><OwnerBadge action={act} /><WaitChip sla={slaOf(l)} dense /></div>
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--faint)]">
                         <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {l.trajet}</span>
                         <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {l.nb_voyageurs}</span>

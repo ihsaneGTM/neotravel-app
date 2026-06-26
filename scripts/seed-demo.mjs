@@ -121,6 +121,32 @@ for (let i = 0; i < N; i++) {
   }
   created++;
 
+  // 2b) historique de statuts ANTIDATÉ — le trigger stampe changed_at=now() à
+  // l'INSERT (faux pour la démo) ; on le remplace par une trajectoire réaliste
+  // pour que le « temps dans l'étape » (SLA) varie vraiment d'un lead à l'autre.
+  {
+    const ORDER = ["new", "qualified", "contacted", "quote_sent", "negotiation", "won"];
+    const path =
+      statut === "lost"
+        ? [...ORDER.slice(0, ORDER.indexOf(pick(["qualified", "contacted", "quote_sent"])) + 1), "lost"]
+        : ORDER.slice(0, ORDER.indexOf(statut) + 1);
+    const span = now - createdAt.getTime();
+    // Le lead atteint sa colonne actuelle tôt dans sa vie (biais vers le début) ;
+    // le reste = temps d'attente dans l'étape → variété fresh / en retard / dépassé.
+    const settleAt = createdAt.getTime() + span * Math.min(0.85, Math.pow(Math.random(), 1.4) * 0.8);
+    const rows = path.map((st, idx) => ({
+      demande_id: dem.id,
+      ancien_statut: idx === 0 ? null : path[idx - 1],
+      nouveau_statut: st,
+      changed_at: new Date(
+        path.length === 1 ? createdAt.getTime() : createdAt.getTime() + (settleAt - createdAt.getTime()) * (idx / (path.length - 1))
+      ).toISOString(),
+      par: idx === 0 ? "system" : ["qualified", "contacted"].includes(st) ? "ia" : "system",
+    }));
+    await sb.from("statut_historique").delete().eq("demande_id", dem.id);
+    await sb.from("statut_historique").insert(rows);
+  }
+
   // 3) devis (estimation pour les qualifiés/contactés ; ferme pour quote_sent+)
   const ht = Math.round((panier / 1.1) * 100) / 100;
   const tva = Math.round((panier - ht) * 100) / 100;
