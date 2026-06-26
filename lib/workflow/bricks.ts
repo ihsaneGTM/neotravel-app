@@ -19,6 +19,14 @@ export type Section =
   | { type: "code"; title?: string; text: string }
   | { type: "cadence"; title?: string; offsets: number[] };
 
+export interface SubPath {
+  key: string;
+  label: string;
+  tint: string;
+  count: number;
+  note: string;
+}
+
 export interface Brick {
   key: string;
   title: string;
@@ -33,6 +41,8 @@ export interface Brick {
   sections: Section[];
   links: { label: string; href: string }[];
   integration?: { providers: string[]; status: "connecte" | "a_connecter"; via: string };
+  /** Branches de sortie visibles sur le canvas (ex: Conversation IA → 3 chemins). */
+  subpaths?: SubPath[];
   /** Compteurs live (badges « ici » / « période ») — injectés par getWorkflow. */
   badges?: BrickLive;
 }
@@ -114,13 +124,22 @@ const MOIS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep"
 
 export async function getWorkflow(sb: SupabaseClient, period: Period = "today"): Promise<Brick[]> {
   const map = await getPipelineMap(sb, MODELS.agent);
-  const [{ count: convCount }, { count: convFlag }, { count: appelsCount }, { data: commsData }] = await Promise.all([
+  const [{ count: convCount }, { count: convFlag }, { data: compData }, { data: appelsData }, { data: commsData }] = await Promise.all([
     sb.from("conversations").select("id", { count: "exact", head: true }),
     sb.from("conversations").select("id", { count: "exact", head: true }).eq("statut", "a_rappeler"),
-    sb.from("appels").select("id", { count: "exact", head: true }),
+    sb.from("demandes").select("complexite").not("complexite", "is", null),
+    sb.from("appels").select("duree_sec"),
     sb.from("commerciaux").select("nom, specialites, commissions_cumulees, charge_courante").order("commissions_cumulees", { ascending: true }),
   ]);
   const comms = (commsData ?? []) as { nom: string; specialites: string[] | null; commissions_cumulees: number; charge_courante: number }[];
+
+  // Complexité : distribution des chemins de sortie de la conversation IA
+  const compRows = (compData ?? []) as { complexite: string }[];
+  const compCount = compRows.reduce((acc, d) => { acc[d.complexite] = (acc[d.complexite] ?? 0) + 1; return acc; }, {} as Record<string, number>);
+  const appelsCount = (appelsData ?? []).length;
+  const durées = (appelsData ?? []).map((a) => (a as { duree_sec: number | null }).duree_sec).filter((d): d is number => d != null);
+  const avgDuree = durées.length > 0 ? Math.round(durées.reduce((a, b) => a + b, 0) / durées.length) : null;
+  const fmtDuree = (s: number) => `${Math.floor(s / 60)}min ${s % 60}s`;
   const resend = resendConfigured();
   const studio = studioConfigured().ok;
   const cadence = await getRelancesCadence(sb);
@@ -146,6 +165,12 @@ export async function getWorkflow(sb: SupabaseClient, period: Period = "today"):
       metrics: [
         { label: "Conversations", value: convCount ?? 0 },
         { label: "Leads créés", value: map.captation.total },
+      ],
+      subpaths: [
+        { key: "simple", label: "Standard", tint: "#2c6e2f", count: compCount["simple"] ?? 0, note: "Parcours nominal — devis estimation + attribution auto" },
+        { key: "complexe", label: "Complexe", tint: "#b4452f", count: compCount["complexe"] ?? 0, note: "Escalade commerciale — circuit multi-étapes, PMR, >85 passagers" },
+        { key: "urgence", label: "Urgent", tint: "#c2a02e", count: compCount["urgence"] ?? 0, note: "Départ < 48 h — notification commerciale prioritaire" },
+        { key: "incoherent", label: "Incohérent", tint: "#6f7163", count: compCount["incoherent"] ?? 0, note: "Données invalides — boucle de correction par l'agent" },
       ],
       sections: [
         { type: "note", text: "Point d'entrée. L'agent qualifie le besoin, capte le contact (email obligatoire) et crée le lead. Il ne communique jamais de prix." },
@@ -249,8 +274,8 @@ export async function getWorkflow(sb: SupabaseClient, period: Period = "today"):
       live: (appelsCount ?? 0) > 0,
       statusLabel: (appelsCount ?? 0) > 0 ? "LIVE" : "À CONNECTER",
       metrics: [
-        { label: "Appels loggés", value: appelsCount ?? 0 },
-        { label: "Auto", value: "Qualifié→Contacté" },
+        { label: "Appels loggés", value: appelsCount },
+        { label: "Durée moy.", value: avgDuree != null ? fmtDuree(avgDuree) : "—" },
       ],
       sections: [
         { type: "note", text: "Le commercial rappelle le prospect. L'appel est enregistré par la téléphonie ; un webhook le journalise dans le CRM et fait passer le lead de « Qualifié » à « Contacté » automatiquement." },

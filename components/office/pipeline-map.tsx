@@ -16,6 +16,8 @@ const ICONS: Record<IconName, LucideIcon> = {
 
 const NODE_W = 250;
 const NODE_H = 150;
+const SUBPATH_EXTRA = 90; // hauteur supplémentaire quand subpaths présents
+const brickH = (b: Brick) => b.subpaths && b.subpaths.length > 0 ? NODE_H + SUBPATH_EXTRA : NODE_H;
 
 const PERIOD_TABS: [string, string][] = [
   ["today", "Jour"],
@@ -29,7 +31,8 @@ export function PipelineMap({ bricks, period = "today" }: { bricks: Brick[]; per
   const maxY = Math.max(...bricks.map((b) => b.y));
   const addNode = { x: maxX + 320, y: 70 };
   const WORLD_W = addNode.x + NODE_W + 120;
-  const WORLD_H = maxY + NODE_H + 140;
+  const maxBrickH = Math.max(...bricks.map(brickH));
+  const WORLD_H = maxY + maxBrickH + 140;
 
   const [view, setView] = useState({ x: 60, y: 120, k: 0.9 });
   const [drag, setDrag] = useState(false);
@@ -95,7 +98,7 @@ export function PipelineMap({ bricks, period = "today" }: { bricks: Brick[]; per
         const r = el.getBoundingClientRect();
         const cx = e.clientX - r.left, cy = e.clientY - r.top;
         setView((v) => {
-          const k = Math.max(0.4, Math.min(1.9, v.k * (1 - e.deltaY * 0.012)));
+          const k = Math.max(0.12, Math.min(1.9, v.k * (1 - e.deltaY * 0.012)));
           return { k, x: cx - ((cx - v.x) / v.k) * k, y: cy - ((cy - v.y) / v.k) * k };
         });
       } else {
@@ -116,10 +119,10 @@ export function PipelineMap({ bricks, period = "today" }: { bricks: Brick[]; per
     setView((v) => ({ ...v, x: panStart.current.x + (e.clientX - panStart.current.mx), y: panStart.current.y + (e.clientY - panStart.current.my) }));
   };
   const stop = () => setDrag(false);
-  const zoom = (f: number) => setView((v) => ({ ...v, k: Math.max(0.4, Math.min(1.9, v.k + f)) }));
+  const zoom = (f: number) => setView((v) => ({ ...v, k: Math.max(0.12, Math.min(1.9, v.k + f)) }));
 
-  const aR = (b: { x: number; y: number }) => ({ x: b.x + NODE_W, y: b.y + NODE_H / 2 });
-  const aL = (b: { x: number; y: number }) => ({ x: b.x, y: b.y + NODE_H / 2 });
+  const aR = (b: Brick) => ({ x: b.x + NODE_W, y: b.y + brickH(b) / 2 });
+  const aL = (b: Brick) => ({ x: b.x, y: b.y + brickH(b) / 2 });
   const path = (a: { x: number; y: number }, b: { x: number; y: number }) => {
     const dx = Math.max(70, (b.x - a.x) / 2);
     return `M ${a.x},${a.y} C ${a.x + dx},${a.y} ${b.x - dx},${b.y} ${b.x},${b.y}`;
@@ -158,7 +161,7 @@ export function PipelineMap({ bricks, period = "today" }: { bricks: Brick[]; per
               </g>
             );
           })}
-          <path d={path(aR(bricks[bricks.length - 1]), aL(addNode))} fill="none" stroke="#c0c8d4" strokeWidth={2.2} strokeDasharray="2 7" strokeLinecap="round" />
+          <path d={path(aR(bricks[bricks.length - 1]), { x: addNode.x, y: addNode.y + NODE_H / 2 })} fill="none" stroke="#c0c8d4" strokeWidth={2.2} strokeDasharray="2 7" strokeLinecap="round" />
         </svg>
 
         {/* Briques */}
@@ -177,7 +180,7 @@ export function PipelineMap({ bricks, period = "today" }: { bricks: Brick[]; per
               onMouseEnter={() => (i < bricks.length - 1 ? setEdge(i) : scheduleClear())}
               onMouseLeave={scheduleClear}
               className={`nt-node-card absolute rounded-[18px] text-left transition-all ${integ ? "border-2 border-dashed" : "border"}`}
-              style={{ left: b.x, top: b.y, width: NODE_W, minHeight: NODE_H, borderColor: sel === b.key ? b.tint : "var(--line-2)", boxShadow: sel === b.key ? `0 0 0 2px ${b.tint}, var(--sh-3)` : undefined }}
+              style={{ left: b.x, top: b.y, width: NODE_W, minHeight: brickH(b), borderColor: sel === b.key ? b.tint : "var(--line-2)", boxShadow: sel === b.key ? `0 0 0 2px ${b.tint}, var(--sh-3)` : undefined }}
             >
               {/* Badges live qui dépassent du coin (l'un dans l'autre, inclinés) */}
               {lv && (
@@ -209,6 +212,26 @@ export function PipelineMap({ bricks, period = "today" }: { bricks: Brick[]; per
                   </div>
                 ))}
               </div>
+              {b.subpaths && b.subpaths.length > 0 && (() => {
+                const total = b.subpaths.reduce((s, p) => s + p.count, 0);
+                return (
+                  <div className="mx-3 mb-3 border-t border-[var(--line)] pt-2">
+                    <p className="mb-1.5 text-[0.58rem] font-bold uppercase tracking-wider text-[var(--faint)]">Chemins de sortie</p>
+                    <div className="space-y-1.5">
+                      {b.subpaths.map((p) => (
+                        <div key={p.key} className="flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: p.tint }} />
+                          <span className="w-[58px] truncate text-[0.63rem] font-medium text-[var(--muted)]">{p.label}</span>
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--grey)]">
+                            <div className="h-full rounded-full transition-all" style={{ width: total > 0 ? `${(p.count / total) * 100}%` : "0%", background: p.tint, opacity: 0.75 }} />
+                          </div>
+                          <span className="w-4 text-right text-[0.63rem] font-bold tabular-nums text-[var(--ink)]">{p.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </button>
           );
         })}
