@@ -221,10 +221,18 @@ export async function getWorkflow(sb: SupabaseClient, period: Period = "today"):
           ],
         },
         {
+          type: "note",
+          text: `Score = urgence d'action commerciale (qui traiter en premier). Départ ≤ ${SCORING.urgentDepartJours} j ⇒ « Urgent » : score forcé à 100 (priorité absolue). Sinon : pondération de la pression délai et de la taille du deal.`,
+        },
+        {
           type: "table",
           title: "Scoring — lib/pipeline/scoring.ts",
-          columns: ["Dimension", "Définition", "Poids"],
-          rows: SCORING.dimensions.map((d) => [d.label, d.desc, `${Math.round((SCORING.globalWeights[d.key as keyof typeof SCORING.globalWeights] ?? 0) * 100)} %`]),
+          columns: ["Critère", "Définition", "Poids"],
+          rows: [
+            ["Pression délai (SLA)", `chrono demande → devis, cible ${SCORING.slaTargetH} h (≈100 à l'approche, 100 au-delà ; nul une fois le devis envoyé)`, `${Math.round(SCORING.poids.sla * 100)} %`],
+            ["Taille du deal", `panier ÷ ${SCORING.dealCapEur.toLocaleString("fr-FR")} € (plafonné à 100)`, `${Math.round(SCORING.poids.deal * 100)} %`],
+            ["Urgent (départ imminent)", `départ ≤ ${SCORING.urgentDepartJours} j → score = 100, priorité absolue`, "override"],
+          ],
         },
       ],
       links: studio ? [{ label: "Ajuster le scoring (Studio)", href: "/studio" }] : [],

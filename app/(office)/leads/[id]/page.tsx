@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, Sparkles, MapPin, Users, Calendar, Phone, Mail, ArrowRight, Zap, Send, CircleCheck, PhoneCall, Clock } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { computeScore, niveauUrgence } from "@/lib/pipeline/scoring";
+import { computeScore, niveauUrgence, SCORING } from "@/lib/pipeline/scoring";
 import { STATUTS, STATUT_LABEL, type Statut } from "@/lib/ui/statuts";
 import { leadAction } from "@/lib/pipeline/lead-action";
 import { slaInfo, WAIT_TIER_META } from "@/lib/pipeline/sla";
@@ -114,17 +114,13 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const villesTrajet = [d.ville_depart, ...etapes, ...(d.ville_arrivee ? [d.ville_arrivee] : [])];
   const trajet = villesTrajet.join(" → ");
   const clientNom = [d.clients?.prenom, d.clients?.nom].filter(Boolean).join(" ") || "Prospect";
+  const devisEnvoye = (["quote_sent", "negotiation", "won", "lost"] as Statut[]).includes(d.statut);
   const s = computeScore({
-    valeur_panier_estimee: d.valeur_panier_estimee,
-    nb_voyageurs: d.nb_voyageurs,
+    created_at: d.created_at,
     date_depart: d.date_depart,
     date_demande: d.date_demande,
-    date_retour: d.date_retour,
-    options: d.options,
-    commentaire: d.commentaire,
-    budget_indicatif: d.budget_indicatif,
-    email: d.clients?.email,
-    telephone: d.clients?.telephone,
+    valeur_panier_estimee: d.valeur_panier_estimee,
+    devisEnvoye,
   });
   const urgence = niveauUrgence(d.date_depart, d.date_demande);
   // SLA d'attente : ancienneté de la demande + temps passé dans l'étape actuelle.
@@ -177,7 +173,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
 
   const suggestions: string[] = [];
   if (s.score >= 75) suggestions.push("Prioriser le rappel — lead à fort potentiel");
-  if (s.budget >= 70) suggestions.push("Générer un devis premium avec options");
+  if (s.dealSize >= 70) suggestions.push("Gros deal — soigner la proposition et relancer vite");
   if (d.complexite !== "simple") suggestions.push("Affiner les besoins logistiques à l'appel");
   if (!d.clients?.telephone) suggestions.push("Récupérer un numéro de téléphone");
   if (suggestions.length === 0) suggestions.push("Confirmer les détails du trajet avec le client");
@@ -240,14 +236,23 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           </p>
         </div>
 
-        {/* Score bars */}
-        <div className="mt-4 flex flex-wrap gap-4">
-          <ScoreBar label="Budget" value={s.budget} />
-          <ScoreBar label="Urgence" value={s.urgency} />
-          <ScoreBar label="Volume" value={s.volume} />
-          <ScoreBar label="Complétude" value={s.completeness} />
-          <ScoreBar label="Conversion" value={s.conversion} />
-        </div>
+        {/* Décomposition du score — transparent (urgence d'action) */}
+        {s.urgent ? (
+          <div className="mt-4 flex items-center gap-2 rounded-xl bg-[var(--terracotta-soft)] px-4 py-3">
+            <Clock className="h-4 w-4 text-[var(--terracotta-ink)]" />
+            <p className="text-sm font-semibold text-[var(--terracotta-ink)]">
+              Priorité absolue — départ dans {s.joursAvantDepart} j{s.joursAvantDepart > 1 ? "" : ""}. Score forcé à 100.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 flex flex-wrap gap-4">
+            <ScoreBar label={devisEnvoye ? "Pression délai (résolue)" : "Pression délai (SLA 24 h)"} value={s.slaPressure} />
+            <ScoreBar label="Taille du deal" value={s.dealSize} />
+          </div>
+        )}
+        <p className="mt-2 text-xs text-[var(--faint)]">
+          Demande il y a {Math.round(s.heuresDepuisDemande)} h · {devisEnvoye ? "devis envoyé (SLA tenu)" : `${SCORING.slaTargetH} h max pour envoyer le devis`}. Score = priorité d'action.
+        </p>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_340px]">

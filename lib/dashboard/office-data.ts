@@ -61,19 +61,22 @@ export async function fetchDemandes(sb: SupabaseClient): Promise<DemandeRow[]> {
   return (data ?? []) as unknown as DemandeRow[];
 }
 
-export function scoreOf(d: DemandeRow): number {
+/** Devis considéré comme envoyé dès le statut quote_sent (et au-delà) → SLA résolu. */
+const DEVIS_ENVOYE: ReadonlySet<Statut> = new Set(["quote_sent", "negotiation", "won", "lost"]);
+
+/** Score complet (urgence d'action) d'une demande. */
+export function scoreDetailOf(d: DemandeRow) {
   return computeScore({
-    valeur_panier_estimee: d.valeur_panier_estimee,
-    nb_voyageurs: d.nb_voyageurs,
+    created_at: d.created_at,
     date_depart: d.date_depart,
     date_demande: d.date_demande,
-    date_retour: d.date_retour,
-    options: d.options,
-    commentaire: d.commentaire,
-    budget_indicatif: d.budget_indicatif,
-    email: d.clients?.email,
-    telephone: d.clients?.telephone,
-  }).score;
+    valeur_panier_estimee: d.valeur_panier_estimee,
+    devisEnvoye: DEVIS_ENVOYE.has(d.statut),
+  });
+}
+
+export function scoreOf(d: DemandeRow): number {
+  return scoreDetailOf(d).score;
 }
 
 // Trajet complet : départ → étapes intermédiaires → arrivée (ne perd aucune ville).
@@ -284,6 +287,8 @@ export interface LeadListItem {
   prestation: string;
   resume: string;
   score: number;
+  /** Départ imminent → priorité absolue (carte mise en valeur, tout en haut). */
+  urgent: boolean;
   valeur: number | null;
   commercial: string | null;
   created_at: string;
@@ -311,6 +316,7 @@ export async function getLeads(sb: SupabaseClient): Promise<LeadListItem[]> {
   ]);
   return demandes.map((d) => {
     const rel = relances.get(d.id) ?? { total: 0, dues: 0 };
+    const sc = scoreDetailOf(d);
     return {
       id: d.id,
       client: nomClient(d),
@@ -322,7 +328,8 @@ export async function getLeads(sb: SupabaseClient): Promise<LeadListItem[]> {
       date_depart: d.date_depart,
       prestation: d.type_prestation,
       resume: d.commentaire?.trim() || `${d.type_prestation} — ${trajet(d)}, ${d.nb_voyageurs} voyageurs.`,
-      score: scoreOf(d),
+      score: sc.score,
+      urgent: sc.urgent,
       valeur: d.valeur_panier_estimee != null ? Number(d.valeur_panier_estimee) : null,
       commercial: d.commerciaux?.nom ?? null,
       created_at: d.created_at,

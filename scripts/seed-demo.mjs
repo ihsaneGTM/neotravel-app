@@ -73,7 +73,9 @@ for (let i = 0; i < N; i++) {
   const isMAD = presta === "mise_a_disposition";
   const pax = rndi(8, 75);
   const typeDeplacement = isMAD ? pick(["aller_retour", "circuit"]) : pick(["aller_simple", "aller_retour", "aller_retour", "circuit"]);
-  const depart = new Date(createdAt.getTime() + rndi(10, 90) * 86_400_000);
+  // ~15 % de demandes à départ imminent (≤ 6 j) → cas « Urgent » (priorité absolue).
+  const urgent = Math.random() < 0.15;
+  const depart = new Date(createdAt.getTime() + (urgent ? rndi(1, 6) : rndi(10, 90)) * 86_400_000);
   const retour = typeDeplacement === "aller_simple" ? null : new Date(depart.getTime() + rndi(1, 4) * 86_400_000);
   const panier = panierFor(route.km, pax);
 

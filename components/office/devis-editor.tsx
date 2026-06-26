@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { X, FileText, Sliders, Loader2, Check } from "lucide-react";
+import { X, FileText, Sliders, Loader2, Check, TriangleAlert } from "lucide-react";
 import { eur, eur2 } from "@/lib/ui/format";
 import {
   computeDevisAjuste,
   SAISON_OPTIONS,
   ANTICIPATION_OPTIONS,
   CAPACITE_OPTIONS,
+  CAPACITE_MAX,
   pct,
   type CoeffOption,
   type DevisAjusteParams,
@@ -75,6 +76,9 @@ function DevisEditorModal({ onClose, ...props }: DevisEditorData & { onClose: ()
   const [remise, setRemise] = useState<number>(init ? (init.remise_eur > 0 ? init.remise_eur : init.remise_pct) : 0);
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  // Au-delà du plafond matrice (85 pax), la capacité n'est pas tarifée automatiquement :
+  // le commercial DOIT saisir le coefficient (cas hors matrice, ≥ +40 % conseillé).
+  const horsMatrice = props.nbVoyageurs > CAPACITE_MAX;
 
   // Esc pour fermer
   useEffect(() => {
@@ -154,7 +158,11 @@ function DevisEditorModal({ onClose, ...props }: DevisEditorData & { onClose: ()
             <div className="space-y-3">
               <CoeffSelect label="Saisonnalité" value={saison} onChange={setSaison} options={SAISON_OPTIONS} />
               <CoeffSelect label="Délai demande / départ" value={antic} onChange={setAntic} options={ANTICIPATION_OPTIONS} />
-              <CoeffSelect label="Capacité" value={capacite} onChange={setCapacite} options={CAPACITE_OPTIONS} />
+              {horsMatrice ? (
+                <ManualCapacite pax={props.nbVoyageurs} value={capacite} onChange={setCapacite} />
+              ) : (
+                <CoeffSelect label="Capacité" value={capacite} onChange={setCapacite} options={CAPACITE_OPTIONS} />
+              )}
               <label className="block">
                 <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--faint)]">Marge commerciale</span>
                 <div className="flex items-center gap-2">
@@ -256,6 +264,32 @@ function CoeffSelect({ label, value, onChange, options }: { label: string; value
         ))}
       </select>
     </label>
+  );
+}
+
+/** Capacité hors matrice (> 85 pax) : coefficient saisi manuellement, mis en valeur. */
+function ManualCapacite({ pax, value, onChange }: { pax: number; value: number; onChange: (v: number) => void }) {
+  const pctValue = Math.round((value - 1) * 100);
+  return (
+    <div className="rounded-xl border-2 border-[var(--terracotta)] bg-[var(--terracotta-soft)] p-3">
+      <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[var(--terracotta-ink)]">
+        <TriangleAlert className="h-3.5 w-3.5" /> Capacité — cas hors matrice
+      </span>
+      <p className="mt-1 text-[0.72rem] leading-snug text-[var(--terracotta-ink)]">
+        {pax} passagers (&gt; {CAPACITE_MAX}) : non tarifé automatiquement. Définissez le coefficient capacité (≥ +40 % conseillé, à votre appréciation).
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-sm font-semibold text-[var(--terracotta-ink)]">+</span>
+        <input
+          type="number"
+          value={pctValue}
+          min={0}
+          onChange={(e) => onChange(1 + Math.max(0, Number(e.target.value) || 0) / 100)}
+          className="w-24 rounded-lg border border-[var(--terracotta)] bg-white px-3 py-2 text-sm font-semibold outline-none"
+        />
+        <span className="text-sm text-[var(--terracotta-ink)]">% (multi-véhicules)</span>
+      </div>
+    </div>
   );
 }
 

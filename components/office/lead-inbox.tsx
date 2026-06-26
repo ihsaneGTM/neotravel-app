@@ -7,7 +7,7 @@ import { Search, List, LayoutGrid, MapPin, Users, Calendar, Sparkles, PhoneCall,
 import type { LeadListItem } from "@/lib/dashboard/office-data";
 import { STATUTS, STATUT_LABEL, STATUT_META, type Statut } from "@/lib/ui/statuts";
 import { leadAction, isCommercialAction, boardColumnOf, BOARD_COLUMNS, type BoardKey } from "@/lib/pipeline/lead-action";
-import { slaInfo, priorityRank, WAIT_TIER_META, type SlaInfo } from "@/lib/pipeline/sla";
+import { slaInfo, WAIT_TIER_META, type SlaInfo } from "@/lib/pipeline/sla";
 import { eur } from "@/lib/ui/format";
 import { StatusBadge, UrgenceBadge, ScorePill, OwnerBadge } from "./ui";
 
@@ -19,8 +19,6 @@ const actionOf = (l: LeadListItem) => leadAction(l.statut, ctxOf(l));
 const boardOf = (l: LeadListItem) => boardColumnOf(l.statut, ctxOf(l));
 /** État SLA (délai d'attente) d'un lead. */
 const slaOf = (l: LeadListItem) => slaInfo(l.created_at, l.entered_at, actionOf(l).owner);
-/** Rang de priorité = score business + pression d'attente. */
-const prioOf = (l: LeadListItem) => priorityRank(l.score, Date.now() - new Date(l.created_at).getTime(), actionOf(l).owner);
 
 type Tri = "priorite" | "score" | "valeur" | "date";
 
@@ -79,7 +77,8 @@ export function LeadInbox({ leads }: { leads: LeadListItem[] }) {
     if (term) r = r.filter((l) => `${l.client} ${l.trajet} ${l.resume}`.toLowerCase().includes(term));
     r = [...r].sort((a, b) =>
       tri === "priorite"
-        ? prioOf(b) - prioOf(a)
+        ? // Urgents (départ imminent) toujours en tête, puis par score d'urgence d'action.
+          Number(b.urgent) - Number(a.urgent) || b.score - a.score
         : tri === "score"
           ? b.score - a.score
           : tri === "valeur"
@@ -207,13 +206,23 @@ function WaitChip({ sla, dense }: { sla: SlaInfo; dense?: boolean }) {
   );
 }
 
+/** Pastille « Urgent » — départ imminent, priorité absolue. */
+function UrgentBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--terracotta)] px-2 py-0.5 text-[0.66rem] font-bold uppercase tracking-wide text-white">
+      <Clock className="h-3 w-3" /> Urgent
+    </span>
+  );
+}
+
 function LeadRow({ l }: { l: LeadListItem }) {
   return (
-    <Link href={`/leads/${l.id}`} className="nt-card nt-lift block p-4">
+    <Link href={`/leads/${l.id}`} className={`nt-card nt-lift block p-4 ${l.urgent ? "ring-2 ring-[var(--terracotta)]" : ""}`}>
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-[var(--ink)]">{l.client}</span>
+            {l.urgent && <UrgentBadge />}
             <StatusBadge statut={l.statut} />
             <OwnerBadge action={actionOf(l)} />
             <WaitChip sla={slaOf(l)} />
@@ -300,13 +309,19 @@ function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statu
                   <div key={l.id} className="space-y-1.5">
                     <Link
                       href={`/leads/${l.id}`}
-                      className={`nt-card nt-lift block p-3.5 ${commercial ? "border-l-[3px] border-l-[var(--lime-deep)]" : ""}`}
+                      className={`nt-card nt-lift block p-3.5 ${
+                        l.urgent
+                          ? "bg-[var(--terracotta-soft)] ring-2 ring-[var(--terracotta)]"
+                          : commercial
+                            ? "border-l-[3px] border-l-[var(--lime-deep)]"
+                            : ""
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-sm font-semibold text-[var(--ink)]">{l.client}</span>
                         <ScorePill score={l.score} />
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5"><OwnerBadge action={act} /><WaitChip sla={slaOf(l)} dense /></div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">{l.urgent && <UrgentBadge />}<OwnerBadge action={act} /><WaitChip sla={slaOf(l)} dense /></div>
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--faint)]">
                         <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {l.trajet}</span>
                         <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {l.nb_voyageurs}</span>

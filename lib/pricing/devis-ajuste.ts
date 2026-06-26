@@ -53,6 +53,8 @@ export const ANTICIPATION_OPTIONS: CoeffOption[] = MATRICES_DEFAUT.anticipation.
   libelle: `${cap1(a.libelle)} (${pct(a.coeff)})`,
 }));
 export const CAPACITE_OPTIONS: CoeffOption[] = MATRICES_DEFAUT.capacite.map((c) => ({ coeff: c.coeff, libelle: c.libelle }));
+/** Plafond passagers de la matrice : au-delà ⇒ cas hors matrice (coeff capacité manuel). */
+export const CAPACITE_MAX = MATRICES_DEFAUT.capacite_max;
 
 function cap1(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
