@@ -52,11 +52,29 @@ export function Rail() {
       className={`${w} sticky top-0 flex h-screen shrink-0 flex-col border-r border-[var(--line)] bg-white transition-[width] duration-300`}
       style={{ transitionTimingFunction: "var(--ease-out)" }}
     >
-      <Link href="/dashboard" className="flex h-16 items-center gap-2.5 px-4">
-        <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl border border-[var(--line)] bg-white shadow-sm">
-          <img src="/neotravel-bus.png" alt="NeoTravel" className="h-6 w-6 object-contain" />
-        </span>
-        {!collapsed && <span className="text-[15px] font-bold tracking-tight" style={{ fontFamily: "var(--font-jakarta)", color: "var(--ink)" }}>NeoTravel</span>}
+      <Link href="/dashboard" className={`group relative flex h-20 items-center ${collapsed ? "justify-center px-2" : "px-3"}`}>
+        {/* halo lime qui réchauffe le coin */}
+        <span aria-hidden className="pointer-events-none absolute left-2 top-1/2 h-14 w-20 -translate-y-1/2 rounded-full blur-2xl" style={{ background: "radial-gradient(circle, rgba(216,231,98,.55), transparent 70%)" }} />
+        {/* bus agrandi + incliné, ombre portée chaude */}
+        <img
+          src="/neotravel-bus.png"
+          alt="NeoTravel"
+          className={`relative z-0 -rotate-[9deg] transition-all duration-300 ease-out group-hover:-rotate-[6deg] group-hover:scale-105 ${collapsed ? "w-11" : "w-[92px]"}`}
+          style={{ filter: "drop-shadow(0 7px 11px rgba(22,23,14,.24))" }}
+        />
+        {/* wordmark qui chevauche le bus et passe DEVANT (liseré blanc pour la lisibilité) */}
+        {!collapsed && (
+          <span
+            className="relative z-10 -ml-7 text-[21px] font-extrabold leading-none tracking-[-0.02em]"
+            style={{
+              fontFamily: "var(--font-jakarta)",
+              color: "var(--ink)",
+              textShadow: "1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff, 0 3px 10px rgba(255,255,255,.95)",
+            }}
+          >
+            Neo<span style={{ color: "var(--forest)" }}>Travel</span>
+          </span>
+        )}
       </Link>
 
       {/* Usage quotidien */}
