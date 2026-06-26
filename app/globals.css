@@ -93,6 +93,16 @@ body {
   background: transparent;
 }
 
+/* Scroll horizontal sans scrollbar visible (overflow-x:auto clip y-axis fix) */
+.nt-scroll-x {
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE */
+}
+.nt-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;

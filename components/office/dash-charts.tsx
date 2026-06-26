@@ -16,9 +16,9 @@ export function WorkflowPreview({ steps }: { steps: PreviewStep[] }) {
   return (
     <Link href="/workflow" className="group block">
       {/* Mini-whiteboard au style du vrai workflow : fond chaud + briques à badges qui dépassent + paquets animés */}
-      <div className="nt-mapbg relative rounded-2xl border border-[var(--line)] px-5 pb-5 pt-10">
-        <div className="nt-scroll overflow-x-auto">
-          <div className="flex min-w-[880px] items-center">
+      <div className="nt-mapbg relative rounded-2xl border border-[var(--line)] px-5 pb-5 pt-2">
+        <div className="nt-scroll-x pt-6">
+          <div className="flex min-w-[880px] items-center pb-1">
             {steps.map((s, i) => {
               const Icon = WF_ICONS[s.icon] ?? MessageSquare;
               const active = hover === i;
