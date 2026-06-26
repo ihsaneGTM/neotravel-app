@@ -9,7 +9,6 @@ import {
   Bell,
   BarChart3,
   FileText,
-  Sparkles,
   LogOut,
   ChevronLeft,
   MessagesSquare,
@@ -54,8 +53,8 @@ export function Rail() {
       style={{ transitionTimingFunction: "var(--ease-out)" }}
     >
       <Link href="/dashboard" className="flex h-16 items-center gap-2.5 px-4">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl shadow-sm" style={{ background: "var(--ink)" }}>
-          <Sparkles className="h-5 w-5" strokeWidth={2.2} style={{ color: "var(--lime)" }} />
+        <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl border border-[var(--line)] bg-white shadow-sm">
+          <img src="/neotravel-bus.png" alt="NeoTravel" className="h-6 w-6 object-contain" />
         </span>
         {!collapsed && <span className="text-[15px] font-bold tracking-tight" style={{ fontFamily: "var(--font-jakarta)", color: "var(--ink)" }}>NeoTravel</span>}
       </Link>
