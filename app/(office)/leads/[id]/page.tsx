@@ -12,6 +12,14 @@ import { avancerStatut, genererDevisFerme, envoyerDevis } from "@/app/commercial
 
 export const dynamic = "force-dynamic";
 
+function renderMd(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={i} className="font-semibold text-[var(--ink)]">{part.slice(2, -2)}</strong>
+      : part
+  );
+}
+
 type Demande = {
   id: string;
   statut: Statut;
@@ -184,7 +192,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
                       </span>
                       <span>{new Date(a.created_at).toLocaleString("fr-FR")}</span>
                     </div>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">{a.transcript}</p>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--muted)]">{a.transcript ? renderMd(a.transcript) : null}</p>
                   </div>
                 ))}
               </div>

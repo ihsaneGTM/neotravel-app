@@ -42,6 +42,12 @@
 
 * {
   border-color: var(--line);
+  /* Scrollbars masquées partout — navigation clavier/tactile préservée */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  display: none;
 }
 
 body {
