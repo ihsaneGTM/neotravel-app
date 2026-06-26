@@ -6,7 +6,7 @@ import { Pencil, X, ChevronRight, Sparkles, Clock } from "lucide-react";
 import type { Statut } from "@/lib/ui/statuts";
 import { STATUT_LABEL } from "@/lib/ui/statuts";
 import { leadAction } from "@/lib/pipeline/lead-action";
-import { genererDevisFerme, envoyerDevis, avancerStatut, modifierDemande } from "@/app/commercial/actions";
+import { envoyerDevis, avancerStatut, modifierDemande } from "@/app/commercial/actions";
 
 export interface LeadFields {
   ville_depart: string;
@@ -86,10 +86,9 @@ export function LeadActionBar({
           {/* CTA principal selon le propriétaire d'action */}
           <div className="flex items-center gap-2">
             {action.owner === "commercial" && action.ctaKind === "generer" && (
-              <form action={genererDevisFerme}>
-                <input type="hidden" name="id" value={id} />
-                <button className="nt-btn-lime nt-press px-4 py-2 text-sm">{action.cta}</button>
-              </form>
+              <button onClick={() => window.dispatchEvent(new Event("neotravel:open-devis"))} className="nt-btn-lime nt-press px-4 py-2 text-sm">
+                {action.cta}
+              </button>
             )}
 
             {action.owner === "commercial" && action.ctaKind === "envoyer" && (

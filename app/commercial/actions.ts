@@ -4,6 +4,15 @@ import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { transitionStatut, enregistrerDevis } from "@/lib/crm";
 import { calculerDevis, DevisError, type TypeDeplacement } from "@/lib/pricing/calculer-devis";
+import {
+  computeDevisAjuste,
+  baseTransport,
+  pct,
+  SAISON_OPTIONS,
+  ANTICIPATION_OPTIONS,
+  CAPACITE_OPTIONS,
+  type CoeffOption,
+} from "@/lib/pricing/devis-ajuste";
 import { estimerDistanceKm } from "@/lib/geo/distance";
 import { sendEmail, renderDevisEmail } from "@/lib/email/resend";
 import { generateDevisPDF } from "@/lib/pdf/devis-pdf";
@@ -152,6 +161,98 @@ export async function genererDevisFerme(formData: FormData) {
   revalidateLead(id);
 }
 
+export interface DevisAjusteInput {
+  id: string;
+  saison: number;
+  anticipation: number;
+  capacite: number;
+  marge: number; // 0.15 = +15 %
+  remise_pct?: number;
+  remise_eur?: number;
+}
+
+const labelDe = (opts: CoeffOption[], coeff: number) => opts.find((o) => o.coeff === coeff)?.libelle ?? pct(coeff);
+
+/**
+ * Enregistre un DEVIS FERME ajusté par le commercial (éditeur de devis).
+ * AUTORITÉ SERVEUR : le client n'envoie que les PARAMÈTRES (coefficients, marge,
+ * remise) ; la base et le prix sont recalculés ici depuis la demande. Remplace
+ * le précédent devis ferme NON envoyé (on n'écrase jamais un devis déjà transmis).
+ */
+export async function enregistrerDevisAjuste(input: DevisAjusteInput) {
+  const { id } = input;
+  if (!id) throw new Error("id manquant.");
+
+  const { data: d, error } = await supabaseAdmin
+    .from("demandes")
+    .select("type_deplacement, ville_depart, ville_arrivee, etapes, nb_voyageurs, distance_km, commercial_id")
+    .eq("id", id)
+    .single();
+  if (error || !d) throw new Error(`demande introuvable: ${error?.message}`);
+  const dem = d as {
+    type_deplacement: TypeDeplacement;
+    ville_depart: string;
+    ville_arrivee: string | null;
+    etapes: string[] | null;
+    nb_voyageurs: number;
+    distance_km: number | null;
+    commercial_id: string | null;
+  };
+
+  // Distance : stockée si dispo, sinon estimée sur tout le trajet (et persistée).
+  let distance = dem.distance_km ?? undefined;
+  if ((distance == null || distance <= 0) && dem.ville_arrivee) {
+    distance = (await estimerDistanceKm([dem.ville_depart, ...(dem.etapes ?? []), dem.ville_arrivee])).distance_km;
+    if (distance) await supabaseAdmin.from("demandes").update({ distance_km: distance }).eq("id", id);
+  }
+  if (!distance || distance <= 0) throw new Error("Distance inconnue : renseignez-la dans « Modifier la demande » avant d'éditer le devis.");
+
+  const base = baseTransport(distance, dem.type_deplacement);
+  const result = computeDevisAjuste({
+    base,
+    distance_km: distance,
+    saison: input.saison,
+    anticipation: input.anticipation,
+    capacite: input.capacite,
+    marge: input.marge,
+    tva: 0.1,
+    remise_pct: input.remise_pct,
+    remise_eur: input.remise_eur,
+    labels: {
+      saison: labelDe(SAISON_OPTIONS, input.saison),
+      anticipation: labelDe(ANTICIPATION_OPTIONS, input.anticipation),
+      capacite: labelDe(CAPACITE_OPTIONS, input.capacite),
+    },
+  });
+
+  // Trace les paramètres (pour réédition) dans `coefficients`.
+  const coefficients = [
+    { nom: "saison", valeur: input.saison },
+    { nom: "anticipation", valeur: input.anticipation },
+    { nom: "capacite", valeur: input.capacite },
+    { nom: "marge", valeur: input.marge },
+    { nom: "tva", valeur: 0.1 },
+    { nom: "remise_pct", valeur: input.remise_pct ?? 0 },
+    { nom: "remise_eur", valeur: input.remise_eur ?? 0 },
+  ];
+
+  // Remplace le ferme NON envoyé existant (jamais un devis déjà transmis).
+  await supabaseAdmin.from("devis").delete().eq("demande_id", id).eq("type", "ferme").is("envoye_at", null);
+  const { error: insErr } = await supabaseAdmin.from("devis").insert({
+    demande_id: id,
+    commercial_id: dem.commercial_id,
+    type: "ferme",
+    prix_ht: result.prix_ht,
+    tva: result.tva,
+    prix_ttc: result.prix_ttc,
+    lignes: result.lignes,
+    coefficients,
+    masque: false,
+  });
+  if (insErr) throw new Error(`Enregistrement du devis impossible : ${insErr.message}`);
+  revalidateLead(id);
+}
+
 /**
  * ENVOI RÉEL du devis ferme par email (Resend). Enregistre la PREUVE
  * (envoye_at + resend_id + destinataire + numero) puis passe le lead à "Devis envoyé".
@@ -163,7 +264,7 @@ export async function envoyerDevis(formData: FormData) {
   const [{ data: demRaw }, { data: devisRaw }] = await Promise.all([
     supabaseAdmin
       .from("demandes")
-      .select("type_deplacement, ville_depart, ville_arrivee, date_depart, date_retour, nb_voyageurs, clients(prenom, nom, email, telephone)")
+      .select("type_deplacement, ville_depart, ville_arrivee, etapes, date_depart, date_retour, nb_voyageurs, clients(prenom, nom, email, telephone)")
       .eq("id", id)
       .single(),
     supabaseAdmin.from("devis").select("id, prix_ttc, lignes, numero").eq("demande_id", id).eq("type", "ferme").order("created_at", { ascending: false }).limit(1),
@@ -173,6 +274,7 @@ export async function envoyerDevis(formData: FormData) {
     type_deplacement: string;
     ville_depart: string;
     ville_arrivee: string | null;
+    etapes: string[] | null;
     date_depart: string;
     date_retour: string | null;
     nb_voyageurs: number;
@@ -199,7 +301,7 @@ export async function envoyerDevis(formData: FormData) {
 
   const numero = devis.numero ?? `DEV-${new Date().getFullYear()}-${Math.floor(Math.random() * 90000) + 10000}`;
   const client = [dem.clients?.prenom, dem.clients?.nom].filter(Boolean).join(" ") || "client";
-  const trajet = dem.ville_arrivee ? `${dem.ville_depart} → ${dem.ville_arrivee}` : dem.ville_depart;
+  const trajet = [dem.ville_depart, ...((dem.etapes ?? []).filter(Boolean)), ...(dem.ville_arrivee ? [dem.ville_arrivee] : [])].join(" → ");
   const dates = `${dateFR(dem.date_depart)}${dem.date_retour ? ` → ${dateFR(dem.date_retour)}` : ""}`;
 
   // PDF client (version simple, sans le détail interne des coefficients) — en pièce jointe.

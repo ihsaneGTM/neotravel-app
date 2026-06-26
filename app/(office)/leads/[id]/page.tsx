@@ -12,7 +12,18 @@ import { ScoreBar } from "@/components/office/charts";
 import { Shell } from "@/components/office/shell";
 import { LeadRouteMap } from "@/components/office/lead-route-map";
 import { LeadActionBar } from "@/components/office/lead-action-bar";
-import { avancerStatut, genererDevisFerme, envoyerDevis } from "@/app/commercial/actions";
+import { DevisEditorButton } from "@/components/office/devis-editor";
+import { deriverAuto } from "@/lib/pricing/devis-ajuste";
+import { estimerDistanceKm } from "@/lib/geo/distance";
+import type { TypeDeplacement } from "@/lib/pricing/calculer-devis";
+import { avancerStatut, envoyerDevis } from "@/app/commercial/actions";
+
+const TYPE_LABEL: Record<string, string> = { aller_simple: "Aller simple", aller_retour: "Aller-retour", circuit: "Circuit multi-étapes" };
+const vehiculeLabel = (nb: number) => (nb <= 19 ? "Minibus" : nb <= 53 ? "Autocar standard" : "Autocar grand tourisme");
+const dateFR = (iso: string) => {
+  const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+};
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +66,7 @@ type Devis = {
   tva: number;
   prix_ttc: number;
   lignes: { libelle: string; montant: number }[];
+  coefficients: { nom: string; valeur: number }[] | null;
   created_at: string;
   envoye_at: string | null;
   resend_id: string | null;
@@ -68,7 +80,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     supabaseAdmin.from("demandes").select("*, clients(prenom, nom, email, telephone, consentement_rgpd), commerciaux(nom, email)").eq("id", id).single(),
     supabaseAdmin
       .from("devis")
-      .select("id, type, prix_ht, tva, prix_ttc, lignes, created_at, envoye_at, resend_id, destinataire, numero")
+      .select("id, type, prix_ht, tva, prix_ttc, lignes, coefficients, created_at, envoye_at, resend_id, destinataire, numero")
       .eq("demande_id", id)
       .order("created_at", { ascending: false }),
     supabaseAdmin.from("appels").select("id, transcript, resume, duree_sec, source, created_at").eq("demande_id", id).order("created_at", { ascending: false }),
@@ -120,6 +132,48 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const sla = slaInfo(d.created_at, enteredAt, action.owner);
   const slaMeta = WAIT_TIER_META[sla.tier];
   const slaAlert = sla.tier === "late" || sla.tier === "breach";
+
+  // ── Données de l'éditeur de devis (coefficients auto + surcharges existantes) ──
+  // Distance pour l'aperçu : stockée si dispo, sinon estimée sur tout le trajet.
+  let distanceForDevis = d.distance_km;
+  if ((distanceForDevis == null || distanceForDevis <= 0) && d.ville_arrivee) {
+    distanceForDevis = (await estimerDistanceKm([d.ville_depart, ...etapes, d.ville_arrivee])).distance_km;
+  }
+  const auto = deriverAuto({
+    distance_km: distanceForDevis,
+    type_deplacement: d.type_deplacement as TypeDeplacement,
+    nb_voyageurs: d.nb_voyageurs,
+    date_depart: d.date_depart,
+    date_demande: d.date_demande,
+  });
+  const coeffMap = Object.fromEntries((devis?.coefficients ?? []).map((c) => [c.nom, c.valeur]));
+  const rawMarge = coeffMap["marge"];
+  const initialDevis = devis
+    ? {
+        saison: coeffMap["saison"] ?? auto.saison,
+        anticipation: coeffMap["anticipation"] ?? auto.anticipation,
+        capacite: coeffMap["capacite"] ?? auto.capacite,
+        // calculerDevis stocke 1+marge (1.15) ; l'éditeur stocke la marge brute (0.15) → on normalise.
+        marge: rawMarge == null ? auto.marge : rawMarge >= 1 ? rawMarge - 1 : rawMarge,
+        remise_pct: coeffMap["remise_pct"] ?? 0,
+        remise_eur: coeffMap["remise_eur"] ?? 0,
+      }
+    : null;
+  const editorData = {
+    id: d.id,
+    numero: devis?.numero ?? null,
+    dateDevis: dateFR(new Date().toISOString().slice(0, 10)),
+    client: { nom: clientNom, email: d.clients?.email ?? null, telephone: d.clients?.telephone ?? null },
+    trajet,
+    typeLabel: TYPE_LABEL[d.type_deplacement] ?? d.type_deplacement,
+    dateDepart: dateFR(d.date_depart),
+    dateRetour: d.date_retour ? dateFR(d.date_retour) : null,
+    nbVoyageurs: d.nb_voyageurs,
+    vehiculeLabel: vehiculeLabel(d.nb_voyageurs),
+    auto,
+    initial: initialDevis,
+    sent: !!devis?.envoye_at,
+  };
 
   const suggestions: string[] = [];
   if (s.score >= 75) suggestions.push("Prioriser le rappel — lead à fort potentiel");
@@ -275,12 +329,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           </Panel>
 
           <Panel title="Devis">
-            <form action={genererDevisFerme}>
-              <input type="hidden" name="id" value={d.id} />
-              <button className="nt-press w-full rounded-xl border border-[var(--lime-deep)] bg-[var(--lime-soft)] px-4 py-2.5 text-sm font-medium text-[var(--forest)] transition-colors hover:bg-[var(--lime-soft)]">
-                {devis ? "Recalculer le devis ferme" : "Générer le devis ferme"}
-              </button>
-            </form>
+            <DevisEditorButton {...editorData} />
 
             {devis ? (
               <div className="mt-4 border-t border-[var(--line)] pt-4">
