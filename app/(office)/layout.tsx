@@ -1,5 +1,4 @@
 import { Rail } from "@/components/office/rail";
-import { ImproveButton } from "@/components/office/improve-button";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getLeadActionCount } from "@/lib/dashboard/office-data";
 
@@ -12,7 +11,6 @@ export default async function OfficeLayout({ children }: { children: React.React
     <div className="flex h-screen overflow-hidden bg-[var(--bg)]">
       <Rail leadActions={leadActions} />
       <main className="nt-scroll relative min-w-0 flex-1 overflow-y-auto">{children}</main>
-      <ImproveButton />
     </div>
   );
 }
