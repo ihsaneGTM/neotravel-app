@@ -6,7 +6,24 @@ import { transitionStatut, enregistrerDevis } from "@/lib/crm";
 import { calculerDevis, DevisError, type TypeDeplacement } from "@/lib/pricing/calculer-devis";
 import { estimerDistanceKm } from "@/lib/geo/distance";
 import { sendEmail, renderDevisEmail } from "@/lib/email/resend";
+import { generateDevisPDF } from "@/lib/pdf/devis-pdf";
 import { getRelancesCadence } from "@/lib/config/app-config";
+
+const TYPE_LABEL: Record<string, string> = {
+  aller_simple: "Aller simple",
+  aller_retour: "Aller-retour",
+  circuit: "Circuit multi-étapes",
+};
+/** Libellé véhicule client (dérivé du nombre de passagers, aligné sur la matrice capacité). */
+function vehiculeLabel(nb: number): string {
+  if (nb <= 19) return "Minibus";
+  if (nb <= 53) return "Autocar standard";
+  return "Autocar grand tourisme";
+}
+const dateFR = (iso: string) => {
+  const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+};
 
 function revalidateLead(id: string) {
   revalidatePath(`/leads/${id}`);
@@ -85,19 +102,20 @@ export async function envoyerDevis(formData: FormData) {
   const [{ data: demRaw }, { data: devisRaw }] = await Promise.all([
     supabaseAdmin
       .from("demandes")
-      .select("ville_depart, ville_arrivee, date_depart, date_retour, nb_voyageurs, clients(prenom, nom, email)")
+      .select("type_deplacement, ville_depart, ville_arrivee, date_depart, date_retour, nb_voyageurs, clients(prenom, nom, email, telephone)")
       .eq("id", id)
       .single(),
     supabaseAdmin.from("devis").select("id, prix_ttc, lignes, numero").eq("demande_id", id).eq("type", "ferme").order("created_at", { ascending: false }).limit(1),
   ]);
 
   const dem = demRaw as unknown as {
+    type_deplacement: string;
     ville_depart: string;
     ville_arrivee: string | null;
     date_depart: string;
     date_retour: string | null;
     nb_voyageurs: number;
-    clients: { prenom: string | null; nom: string | null; email: string | null } | null;
+    clients: { prenom: string | null; nom: string | null; email: string | null; telephone: string | null } | null;
   } | null;
   let devis = (devisRaw ?? [])[0] as { id: string; prix_ttc: number; lignes: { libelle: string; montant: number }[]; numero: string | null } | undefined;
 
@@ -121,10 +139,33 @@ export async function envoyerDevis(formData: FormData) {
   const numero = devis.numero ?? `DEV-${new Date().getFullYear()}-${Math.floor(Math.random() * 90000) + 10000}`;
   const client = [dem.clients?.prenom, dem.clients?.nom].filter(Boolean).join(" ") || "client";
   const trajet = dem.ville_arrivee ? `${dem.ville_depart} → ${dem.ville_arrivee}` : dem.ville_depart;
-  const dates = `${dem.date_depart}${dem.date_retour ? ` → ${dem.date_retour}` : ""}`;
+  const dates = `${dateFR(dem.date_depart)}${dem.date_retour ? ` → ${dateFR(dem.date_retour)}` : ""}`;
 
-  const { subject, html } = renderDevisEmail({ numero, client, trajet, dates, nb_voyageurs: dem.nb_voyageurs, lignes: devis.lignes, prix_ttc: devis.prix_ttc });
-  const resend_id = await sendEmail({ to: email, subject, html }); // throw si Resend KO → pas de faux "envoyé"
+  // PDF client (version simple, sans le détail interne des coefficients) — en pièce jointe.
+  const pdf = await generateDevisPDF({
+    numero,
+    dateDevis: dateFR(new Date().toISOString().slice(0, 10)),
+    client: { nom: client, email, telephone: dem.clients?.telephone ?? null },
+    trajet,
+    typeLabel: TYPE_LABEL[dem.type_deplacement] ?? dem.type_deplacement,
+    dateDepart: dateFR(dem.date_depart),
+    dateRetour: dem.date_retour ? dateFR(dem.date_retour) : null,
+    nbVoyageurs: dem.nb_voyageurs,
+    nbVehicules: 1,
+    nbChauffeurs: 1,
+    vehiculeLabel: vehiculeLabel(dem.nb_voyageurs),
+    prixTTC: devis.prix_ttc,
+    inclus: ["Frais de chauffeur", "Assurance responsabilité civile professionnelle", "Mise à disposition du véhicule"],
+    aCharge: ["Péages autoroutiers", "Parkings éventuels"],
+  });
+
+  const { subject, html } = renderDevisEmail({ numero, client, trajet, dates, nb_voyageurs: dem.nb_voyageurs, prix_ttc: devis.prix_ttc });
+  const resend_id = await sendEmail({
+    to: email,
+    subject,
+    html,
+    attachments: [{ filename: `Devis-NeoTravel-${numero}.pdf`, content: pdf }],
+  }); // throw si Resend KO → pas de faux "envoyé"
 
   await supabaseAdmin
     .from("devis")
