@@ -24,7 +24,7 @@ const PREFS_KEY = "neotravel:inbox-prefs";
 export function LeadInbox({ leads }: { leads: LeadListItem[] }) {
   const [q, setQ] = useState("");
   const [filtre, setFiltre] = useState<Statut | "all">("all");
-  const [vue, setVue] = useState<"list" | "kanban">("list");
+  const [vue, setVue] = useState<"list" | "kanban">("kanban");
   const [tri, setTri] = useState<Tri>("score");
 
   // Restaure la vue/filtre/tri d'où on venait (persistés entre navigations).
@@ -88,7 +88,7 @@ export function LeadInbox({ leads }: { leads: LeadListItem[] }) {
             <Sparkles className="h-5 w-5" strokeWidth={2.2} />
           </span>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[var(--ink)]">AI Lead Inbox</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-[var(--ink)]">Demandes</h1>
             <p className="text-sm text-[var(--muted)]">
               {leads.length} leads · {nouveaux} nouveau{nouveaux > 1 ? "x" : ""}
             </p>
@@ -131,13 +131,15 @@ export function LeadInbox({ leads }: { leads: LeadListItem[] }) {
         </div>
       </div>
 
-      {/* Filtres statut */}
-      <div className="nt-scroll mb-5 flex gap-2 overflow-x-auto pb-1">
-        <Chip active={filtre === "all"} onClick={() => setFiltre("all")} label={`Tous (${counts.all})`} />
-        {STATUTS.map((s) => (
-          <Chip key={s} active={filtre === s} onClick={() => setFiltre(s)} label={`${STATUT_LABEL[s]} (${counts[s] ?? 0})`} dot={STATUT_META[s].hex} />
-        ))}
-      </div>
+      {/* Filtres statut — masqués en Kanban (les colonnes organisent déjà par statut) */}
+      {vue === "list" && (
+        <div className="nt-scroll mb-5 flex gap-2 overflow-x-auto pb-1">
+          <Chip active={filtre === "all"} onClick={() => setFiltre("all")} label={`Tous (${counts.all})`} />
+          {STATUTS.map((s) => (
+            <Chip key={s} active={filtre === s} onClick={() => setFiltre(s)} label={`${STATUT_LABEL[s]} (${counts[s] ?? 0})`} dot={STATUT_META[s].hex} />
+          ))}
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="nt-card py-16 text-center text-sm text-[var(--faint)]">Aucun lead ne correspond.</div>
@@ -205,7 +207,7 @@ const HIGHLIGHT_BOARD: Partial<Record<Statut, BoardKey>> = { quote_sent: "devis_
 function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statut | null }) {
   const hiCol = highlight ? (HIGHLIGHT_BOARD[highlight] ?? (highlight as BoardKey)) : null;
   return (
-    <div className="nt-scroll flex gap-4 overflow-x-auto pb-2">
+    <div className="nt-scroll flex gap-4 overflow-x-auto pb-3 pt-1 px-0.5">
       {BOARD_COLUMNS.map((bc) => {
         const col = leads.filter((l) => boardOf(l) === bc.key);
         const isHi = bc.key === hiCol;

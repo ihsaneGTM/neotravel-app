@@ -19,7 +19,7 @@ import {
 // Pages d'usage quotidien (commerciaux)
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/leads", label: "Lead Inbox", icon: Inbox },
+  { href: "/leads", label: "Demandes", icon: Inbox },
   { href: "/conversations", label: "Conversations", icon: MessagesSquare },
   { href: "/follow-ups", label: "Follow-ups", icon: Bell },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
