@@ -6,11 +6,13 @@ import { Pencil, X, ChevronRight, Sparkles, Clock } from "lucide-react";
 import type { Statut } from "@/lib/ui/statuts";
 import { STATUT_LABEL } from "@/lib/ui/statuts";
 import { leadAction } from "@/lib/pipeline/lead-action";
-import { genererDevisFerme, envoyerDevis, avancerStatut, modifierLead } from "@/app/commercial/actions";
+import { genererDevisFerme, envoyerDevis, avancerStatut, modifierDemande } from "@/app/commercial/actions";
 
 export interface LeadFields {
   ville_depart: string;
   ville_arrivee: string;
+  etapes: string;
+  distance_km: string;
   date_depart: string;
   date_retour: string;
   nb_voyageurs: number;
@@ -149,21 +151,25 @@ export function LeadActionBar({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-[var(--ink)]">Modifier le lead</h2>
+              <h2 className="text-lg font-bold text-[var(--ink)]">Modifier la demande</h2>
               <button onClick={() => setEdit(false)} className="nt-press grid h-8 w-8 place-items-center rounded-lg text-[var(--faint)] hover:bg-[var(--grey)]">
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="mb-4 text-xs text-[var(--faint)]">Corrigez les informations extraites par l'IA, ajustez le besoin et ajoutez une note.</p>
+            <p className="mb-4 text-xs text-[var(--faint)]">Corrigez les informations extraites par l'IA, ajustez le trajet et ajoutez une note.</p>
 
-            <form action={modifierLead} onSubmit={() => setEdit(false)} className="space-y-4">
+            <form action={modifierDemande} onSubmit={() => setEdit(false)} className="space-y-4">
               <input type="hidden" name="id" value={id} />
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Ville de départ" name="ville_depart" defaultValue={fields.ville_depart} required />
                 <Field label="Ville d'arrivée" name="ville_arrivee" defaultValue={fields.ville_arrivee} />
+                <div className="col-span-2">
+                  <Field label="Étapes intermédiaires (séparées par des virgules)" name="etapes" defaultValue={fields.etapes} placeholder="ex. Lyon, Genève" />
+                </div>
+                <Field label="Distance (km)" name="distance_km" type="number" defaultValue={fields.distance_km} min={1} placeholder="auto si vide" />
+                <Field label="Voyageurs" name="nb_voyageurs" type="number" defaultValue={String(fields.nb_voyageurs)} required min={1} />
                 <Field label="Date de départ" name="date_depart" type="date" defaultValue={fields.date_depart} />
                 <Field label="Date de retour" name="date_retour" type="date" defaultValue={fields.date_retour} />
-                <Field label="Voyageurs" name="nb_voyageurs" type="number" defaultValue={String(fields.nb_voyageurs)} required min={1} />
                 <Select label="Type de déplacement" name="type_deplacement" defaultValue={fields.type_deplacement} options={TYPES_DEP} />
                 <Field label="Prestation" name="type_prestation" defaultValue={fields.type_prestation} />
               </div>
@@ -208,7 +214,7 @@ function StatutButton({ id, cible, label, primary }: { id: string; cible: Statut
   );
 }
 
-function Field({ label, name, defaultValue, type = "text", required, min }: { label: string; name: string; defaultValue: string; type?: string; required?: boolean; min?: number }) {
+function Field({ label, name, defaultValue, type = "text", required, min, placeholder }: { label: string; name: string; defaultValue: string; type?: string; required?: boolean; min?: number; placeholder?: string }) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--faint)]">{label}</span>
@@ -218,6 +224,7 @@ function Field({ label, name, defaultValue, type = "text", required, min }: { la
         defaultValue={defaultValue}
         required={required}
         min={min}
+        placeholder={placeholder}
         className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--lime-deep)]"
       />
     </label>

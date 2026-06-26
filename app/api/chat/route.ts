@@ -49,15 +49,26 @@ export async function POST(req: Request) {
             etapes: input.etapes,
           });
 
+          // Distance routière sur tout le trajet (départ → étapes → arrivée).
+          let distanceKm: number | null = null;
+          if (input.ville_arrivee) {
+            try {
+              const villes = [input.ville_depart, ...(input.etapes ?? []), input.ville_arrivee];
+              const est = await estimerDistanceKm(villes);
+              if (est.source !== "defaut") distanceKm = est.distance_km;
+            } catch {
+              /* géocodage indisponible → distance laissée à null (le commercial complétera) */
+            }
+          }
+
           let devis;
           let valeur_panier: number | undefined;
-          if (evalc.afficher_estimation && input.ville_arrivee) {
+          if (evalc.afficher_estimation && distanceKm != null) {
             try {
-              const { distance_km } = await estimerDistanceKm(input.ville_depart, input.ville_arrivee);
               devis = calculerDevis({
                 nb_passagers: input.nb_voyageurs,
                 type_deplacement: input.type_deplacement,
-                distance_km,
+                distance_km: distanceKm,
                 date_depart: input.date_depart,
                 date_demande: today,
                 date_retour: input.date_retour,
@@ -71,6 +82,7 @@ export async function POST(req: Request) {
           const { demande_id, client_id } = await creerClientEtDemande(supabaseAdmin, {
             ...input,
             complexite: evalc.complexite,
+            distance_km: distanceKm,
             valeur_panier_estimee: valeur_panier ?? null,
           });
           const attr = await attribuerDemande(supabaseAdmin, demande_id, input.type_prestation);

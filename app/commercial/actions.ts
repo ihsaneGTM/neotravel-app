@@ -33,11 +33,15 @@ function revalidateLead(id: string) {
 }
 
 /**
- * Édition manuelle d'un lead par le commercial : corrige les infos extraites par
- * l'IA, met à jour les dates/voyageurs/type, ajoute une note. Ne touche PAS au statut.
- * Si la ville d'arrivée change, on remet distance_km à null (recalcul au prochain devis).
+ * Édition manuelle d'une DEMANDE par le commercial : corrige les infos extraites
+ * par l'IA (trajet, étapes, distance, dates, voyageurs, type), ajoute une note.
+ * Ne touche PAS au statut.
+ *
+ * Distance : si le commercial saisit une valeur, elle prime (override manuel) ;
+ * sinon, si le trajet a changé (départ / arrivée / étapes), on remet distance_km
+ * à null pour forcer un recalcul automatique au prochain devis.
  */
-export async function modifierLead(formData: FormData) {
+export async function modifierDemande(formData: FormData) {
   const id = String(formData.get("id"));
   if (!id) throw new Error("id manquant.");
 
@@ -47,24 +51,30 @@ export async function modifierLead(formData: FormData) {
   };
   const ville_depart = str("ville_depart");
   const ville_arrivee = str("ville_arrivee");
+  const etapes = (str("etapes") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const date_depart = str("date_depart");
   const date_retour = str("date_retour");
   const type_deplacement = str("type_deplacement");
   const type_prestation = str("type_prestation");
   const commentaire = str("commentaire");
   const nb = Number(formData.get("nb_voyageurs"));
+  const distRaw = str("distance_km");
+  const distManuelle = distRaw != null ? Number(distRaw) : null;
 
   if (!ville_depart) throw new Error("La ville de départ est obligatoire.");
   if (!Number.isFinite(nb) || nb <= 0) throw new Error("Le nombre de voyageurs doit être supérieur à 0.");
   if (date_retour && date_depart && date_retour < date_depart) throw new Error("La date de retour est antérieure au départ.");
+  if (distManuelle != null && (!Number.isFinite(distManuelle) || distManuelle <= 0)) throw new Error("La distance doit être un nombre de kilomètres positif.");
 
-  // Récupère l'état courant pour savoir si la ville d'arrivée a changé (→ recalcul distance).
-  const { data: cur } = await supabaseAdmin.from("demandes").select("ville_arrivee").eq("id", id).single();
-  const arriveeAvant = (cur as { ville_arrivee: string | null } | null)?.ville_arrivee ?? null;
+  // État courant : a-t-on touché au trajet (→ recalcul distance si pas d'override) ?
+  const { data: cur } = await supabaseAdmin.from("demandes").select("ville_arrivee, etapes").eq("id", id).single();
+  const c = cur as { ville_arrivee: string | null; etapes: string[] | null } | null;
+  const trajetChange = (c?.ville_arrivee ?? null) !== ville_arrivee || (c?.etapes ?? []).join("|") !== etapes.join("|");
 
   const patch: Record<string, unknown> = {
     ville_depart,
     ville_arrivee,
+    etapes,
     date_depart,
     date_retour,
     nb_voyageurs: nb,
@@ -72,7 +82,8 @@ export async function modifierLead(formData: FormData) {
     type_prestation,
     commentaire,
   };
-  if (arriveeAvant !== ville_arrivee) patch.distance_km = null; // forcera le recalcul au prochain devis
+  if (distManuelle != null) patch.distance_km = Math.round(distManuelle); // override manuel prioritaire
+  else if (trajetChange) patch.distance_km = null; // forcera le recalcul au prochain devis
 
   const { error } = await supabaseAdmin.from("demandes").update(patch).eq("id", id);
   if (error) throw new Error(`Mise à jour impossible : ${error.message}`);
@@ -93,7 +104,7 @@ export async function avancerStatut(formData: FormData) {
 async function calculerEtEnregistrerFerme(id: string) {
   const { data: d, error } = await supabaseAdmin
     .from("demandes")
-    .select("type_deplacement, ville_depart, ville_arrivee, date_depart, date_retour, nb_voyageurs, commercial_id, distance_km")
+    .select("type_deplacement, ville_depart, ville_arrivee, etapes, date_depart, date_retour, nb_voyageurs, commercial_id, distance_km")
     .eq("id", id)
     .single();
   if (error || !d) throw new Error(`demande introuvable: ${error?.message}`);
@@ -101,6 +112,7 @@ async function calculerEtEnregistrerFerme(id: string) {
     type_deplacement: TypeDeplacement;
     ville_depart: string;
     ville_arrivee: string | null;
+    etapes: string[] | null;
     date_depart: string;
     date_retour: string | null;
     nb_voyageurs: number;
@@ -110,7 +122,8 @@ async function calculerEtEnregistrerFerme(id: string) {
 
   let distance = dem.distance_km ?? undefined;
   if ((distance == null || distance <= 0) && dem.ville_arrivee) {
-    distance = (await estimerDistanceKm(dem.ville_depart, dem.ville_arrivee)).distance_km;
+    // Distance sur tout le trajet (départ → étapes → arrivée).
+    distance = (await estimerDistanceKm([dem.ville_depart, ...(dem.etapes ?? []), dem.ville_arrivee])).distance_km;
   }
   const today = new Date().toISOString().slice(0, 10);
   try {

@@ -30,22 +30,30 @@ function loadLeaflet(): Promise<unknown> {
 interface Geo {
   start: { lat: number; lon: number };
   end: { lat: number; lon: number };
+  stops: { lat: number; lon: number }[];
   coords: [number, number][];
   distance_km: number;
   duration_min: number | null;
 }
 
-/** Carte d'itinéraire animée (style landing) — paramétrée par le trajet du lead. */
-export function LeadRouteMap({ from, to }: { from: string; to: string }) {
+/** Carte d'itinéraire animée (style landing) — départ → étapes → arrivée. */
+export function LeadRouteMap({ villes }: { villes: string[] }) {
   const ref = useRef<HTMLDivElement>(null);
   const [geo, setGeo] = useState<Geo | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+
+  const points = villes.map((v) => v?.trim()).filter(Boolean);
+  const from = points[0] ?? "";
+  const to = points[points.length - 1] ?? "";
+  const via = points.slice(1, -1);
+  const key = points.join("|");
 
   // 1) récupère la géométrie de l'itinéraire (API serveur : géocodage + OSRM)
   useEffect(() => {
     let alive = true;
     setState("loading");
-    fetch(`/api/route?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+    const qs = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${via.length ? `&via=${encodeURIComponent(via.join(","))}` : ""}`;
+    fetch(`/api/route?${qs}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((j: Geo) => {
         if (!alive) return;
@@ -56,7 +64,8 @@ export function LeadRouteMap({ from, to }: { from: string; to: string }) {
     return () => {
       alive = false;
     };
-  }, [from, to]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   // 2) rend la carte Leaflet une fois la géométrie disponible
   useEffect(() => {
@@ -95,15 +104,21 @@ export function LeadRouteMap({ from, to }: { from: string; to: string }) {
         L.polyline(ROUTE, { color: "#16170e", weight: 8, opacity: 0.45, lineCap: "round", lineJoin: "round" }).addTo(map);
         L.polyline(ROUTE, { color: "#bcd233", weight: 4.5, opacity: 1, lineCap: "round", lineJoin: "round", dashArray: "1 12", className: "ntr-flow" }).addTo(map);
 
-        const pin = (label: string, side: "start" | "end") =>
+        const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
+        const pin = (label: string, side: "start" | "end" | "via") =>
           L.divIcon({
             className: "",
-            html: `<div class="ntr-pin ntr-pin-${side}"><span class="ntr-pin-label">${label}</span></div>`,
-            iconSize: [16, 16],
-            iconAnchor: [8, 8],
+            html: `<div class="ntr-pin ntr-pin-${side}"><span class="ntr-pin-label">${esc(label)}</span></div>`,
+            iconSize: side === "via" ? [12, 12] : [16, 16],
+            iconAnchor: side === "via" ? [6, 6] : [8, 8],
           });
-        L.marker(ROUTE[0], { icon: pin(from, "start"), interactive: false }).addTo(map);
-        L.marker(ROUTE[ROUTE.length - 1], { icon: pin(to, "end"), interactive: false }).addTo(map);
+        // Marqueurs à chaque arrêt géocodé : départ, étapes intermédiaires, arrivée.
+        const stops = geo.stops?.length ? geo.stops : [{ lat: ROUTE[0][0], lon: ROUTE[0][1] }, { lat: ROUTE[ROUTE.length - 1][0], lon: ROUTE[ROUTE.length - 1][1] }];
+        stops.forEach((s, i) => {
+          const side = i === 0 ? "start" : i === stops.length - 1 ? "end" : "via";
+          const label = points[i] ?? (side === "end" ? to : from);
+          L.marker([s.lat, s.lon], { icon: pin(label, side), interactive: false, zIndexOffset: side === "via" ? 200 : 400 }).addTo(map);
+        });
 
         const veh = L.marker(ROUTE[0], {
           icon: L.divIcon({ className: "", html: '<div class="ntr-veh"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
@@ -166,7 +181,8 @@ export function LeadRouteMap({ from, to }: { from: string; to: string }) {
         map.remove();
       }
     };
-  }, [geo, from, to]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geo, key]);
 
   if (state === "error") {
     return <p className="py-6 text-center text-sm text-[var(--faint)]">Itinéraire indisponible pour ce trajet.</p>;
@@ -174,7 +190,7 @@ export function LeadRouteMap({ from, to }: { from: string; to: string }) {
 
   return (
     <div className="ntr-frame">
-      <div ref={ref} className="ntr-map" aria-label={`Itinéraire ${from} – ${to}`} role="img" />
+      <div ref={ref} className="ntr-map" aria-label={`Itinéraire ${points.join(" – ")}`} role="img" />
       {state === "loading" && (
         <div className="absolute inset-0 z-[500] grid place-items-center">
           <span className="flex items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-[var(--muted)] shadow-sm">
@@ -188,7 +204,12 @@ export function LeadRouteMap({ from, to }: { from: string; to: string }) {
             <span className="ntr-badge-dot" /> Itinéraire en direct
           </div>
           <div className="ntr-route-label" aria-hidden>
-            {from} <span>→</span> {to}
+            {points.map((p, i) => (
+              <span key={i} style={{ color: "inherit" }}>
+                {i > 0 && <span> → </span>}
+                {p}
+              </span>
+            ))}
             {geo && ` · ≈ ${geo.distance_km} km`}
             {geo?.duration_min ? ` · ${Math.floor(geo.duration_min / 60)}h${String(geo.duration_min % 60).padStart(2, "0")}` : ""}
           </div>

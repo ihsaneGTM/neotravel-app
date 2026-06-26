@@ -37,6 +37,7 @@ export interface DemandeRow {
   complexite: string;
   ville_depart: string;
   ville_arrivee: string | null;
+  etapes: string[] | null;
   nb_voyageurs: number;
   date_depart: string;
   date_demande: string | null;
@@ -51,7 +52,7 @@ export interface DemandeRow {
 }
 
 const SELECT =
-  "id, statut, canal, type_prestation, complexite, ville_depart, ville_arrivee, nb_voyageurs, date_depart, date_demande, date_retour, options, commentaire, budget_indicatif, valeur_panier_estimee, created_at, clients(prenom, nom, email, telephone), commerciaux(nom)";
+  "id, statut, canal, type_prestation, complexite, ville_depart, ville_arrivee, etapes, nb_voyageurs, date_depart, date_demande, date_retour, options, commentaire, budget_indicatif, valeur_panier_estimee, created_at, clients(prenom, nom, email, telephone), commerciaux(nom)";
 
 const nomClient = (d: DemandeRow) => [d.clients?.prenom, d.clients?.nom].filter(Boolean).join(" ") || "Prospect";
 
@@ -75,7 +76,9 @@ export function scoreOf(d: DemandeRow): number {
   }).score;
 }
 
-const trajet = (d: DemandeRow) => (d.ville_arrivee ? `${d.ville_depart} → ${d.ville_arrivee}` : d.ville_depart);
+// Trajet complet : départ → étapes intermédiaires → arrivée (ne perd aucune ville).
+const trajet = (d: DemandeRow) =>
+  [d.ville_depart, ...((d.etapes ?? []).filter(Boolean)), ...(d.ville_arrivee ? [d.ville_arrivee] : [])].join(" → ");
 
 export interface DashboardData {
   total: number;

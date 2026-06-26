@@ -30,6 +30,7 @@ type Demande = {
   type_deplacement: string;
   ville_depart: string;
   ville_arrivee: string | null;
+  etapes: string[] | null;
   date_depart: string;
   date_demande: string | null;
   date_retour: string | null;
@@ -96,7 +97,10 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const devisList = (devisRaw ?? []) as unknown as Devis[];
   // Seul le devis FERME est présentable/envoyable au client. L'estimation reste interne.
   const devis = devisList.find((v) => v.type === "ferme") ?? null;
-  const trajet = d.ville_arrivee ? `${d.ville_depart} → ${d.ville_arrivee}` : d.ville_depart;
+  const etapes = (d.etapes ?? []).filter(Boolean);
+  // Trajet complet : départ → étapes intermédiaires → arrivée.
+  const villesTrajet = [d.ville_depart, ...etapes, ...(d.ville_arrivee ? [d.ville_arrivee] : [])];
+  const trajet = villesTrajet.join(" → ");
   const clientNom = [d.clients?.prenom, d.clients?.nom].filter(Boolean).join(" ") || "Prospect";
   const s = computeScore({
     valeur_panier_estimee: d.valeur_panier_estimee,
@@ -202,7 +206,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           </Panel>
           {d.ville_arrivee && (
             <Panel title="Itinéraire" icon={MapPin}>
-              <LeadRouteMap from={d.ville_depart} to={d.ville_arrivee} />
+              <LeadRouteMap villes={villesTrajet} />
             </Panel>
           )}
           <Panel title="Informations extraites">
@@ -351,6 +355,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
         fields={{
           ville_depart: d.ville_depart,
           ville_arrivee: d.ville_arrivee ?? "",
+          etapes: etapes.join(", "),
+          distance_km: d.distance_km != null ? String(d.distance_km) : "",
           date_depart: d.date_depart,
           date_retour: d.date_retour ?? "",
           nb_voyageurs: d.nb_voyageurs,
