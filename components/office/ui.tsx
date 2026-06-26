@@ -1,7 +1,24 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { ArrowUpRight, ArrowDownRight, ArrowRight, MoreHorizontal } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, ArrowRight, MoreHorizontal, Sparkles, PhoneCall, FileText, Send, Clock, User, Check, X } from "lucide-react";
 import { STATUT_META, STATUT_LABEL, URGENCE_BADGE, type Statut } from "@/lib/ui/statuts";
+import { OWNER_META, type LeadAction, type ActionIcon } from "@/lib/pipeline/lead-action";
+
+const ACTION_ICONS: Record<ActionIcon, LucideIcon> = {
+  sparkles: Sparkles, phone: PhoneCall, file: FileText, send: Send, clock: Clock, user: User, check: Check, x: X,
+};
+
+/** Marqueur "qui doit agir" sur un lead (🤖 IA / 👤 à vous / ⏳ attente). */
+export function OwnerBadge({ action, className = "" }: { action: LeadAction; className?: string }) {
+  const meta = OWNER_META[action.owner];
+  const Icon = ACTION_ICONS[action.icon];
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.7rem] font-semibold ${meta.badge} ${className}`}>
+      <Icon className="h-3 w-3" strokeWidth={2.2} />
+      {action.label}
+    </span>
+  );
+}
 
 /** Pill de variation ▲/▼ (positif = lime/forest, négatif = terracotta). */
 export function DeltaPill({ pct }: { pct: number }) {

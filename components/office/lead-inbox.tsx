@@ -6,8 +6,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Search, List, LayoutGrid, MapPin, Users, Calendar, Sparkles, PhoneCall, Loader2 } from "lucide-react";
 import type { LeadListItem } from "@/lib/dashboard/office-data";
 import { STATUTS, STATUT_LABEL, STATUT_META, type Statut } from "@/lib/ui/statuts";
+import { leadAction, isCommercialAction } from "@/lib/pipeline/lead-action";
 import { eur } from "@/lib/ui/format";
-import { StatusBadge, UrgenceBadge, ScorePill } from "./ui";
+import { StatusBadge, UrgenceBadge, ScorePill, OwnerBadge } from "./ui";
+
+/** Action canonique d'un lead de l'inbox (statut + devis prêt). */
+const actionOf = (l: LeadListItem) => leadAction(l.statut, { devisPret: l.devis_pret });
 
 type Tri = "score" | "valeur" | "date";
 
@@ -168,6 +172,7 @@ function LeadRow({ l }: { l: LeadListItem }) {
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-[var(--ink)]">{l.client}</span>
             <StatusBadge statut={l.statut} />
+            <OwnerBadge action={actionOf(l)} />
             <UrgenceBadge niveau={l.urgence} />
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--muted)]">
@@ -196,17 +201,24 @@ function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statu
       {STATUTS.map((s) => {
         const col = leads.filter((l) => l.statut === s);
         const isHi = s === highlight;
+        const actions = col.filter((l) => isCommercialAction(actionOf(l))).length;
         return (
           <div
             key={s}
             ref={isHi ? (el) => el?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }) : undefined}
-            className={`w-[280px] shrink-0 rounded-2xl ${isHi ? "nt-pop p-2.5" : ""}`}
+            className={`w-[280px] shrink-0 rounded-2xl ${isHi ? "nt-pop p-2.5" : actions > 0 ? "p-2.5 ring-1 ring-[var(--lime-deep)]" : ""}`}
             style={isHi ? { background: "color-mix(in srgb, var(--lime-soft) 55%, transparent)" } : undefined}
           >
             <div className="mb-3 flex items-center gap-2">
               <span className="h-2 w-2 rounded-full" style={{ background: STATUT_META[s].hex }} />
               <span className="text-sm font-semibold text-[var(--ink)]">{STATUT_LABEL[s]}</span>
-              <span className="ml-auto text-xs text-[var(--faint)]">{col.length}</span>
+              {actions > 0 ? (
+                <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-[var(--lime-soft)] px-2 py-0.5 text-[0.68rem] font-bold text-[var(--forest)] ring-1 ring-[var(--lime-deep)]">
+                  {actions} à faire
+                </span>
+              ) : (
+                <span className="ml-auto text-xs text-[var(--faint)]">{col.length}</span>
+              )}
             </div>
             <div className="space-y-3">
               {col.length === 0 && (
@@ -214,26 +226,34 @@ function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statu
                   Aucun lead
                 </div>
               )}
-              {col.map((l) => (
-                <div key={l.id} className="space-y-1.5">
-                  <Link href={`/leads/${l.id}`} className="nt-card nt-lift block p-3.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="text-sm font-semibold text-[var(--ink)]">{l.client}</span>
-                      <ScorePill score={l.score} />
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--faint)]">
-                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {l.trajet}</span>
-                      <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {l.nb_voyageurs}</span>
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-xs text-[var(--muted)]">{l.resume}</p>
-                    <div className="mt-2.5 flex items-center justify-between">
-                      <UrgenceBadge niveau={l.urgence} />
-                      <span className="text-sm font-semibold text-[var(--ink)]">{l.valeur != null ? eur(l.valeur) : "—"}</span>
-                    </div>
-                  </Link>
-                  {l.statut === "qualified" && <CallSim id={l.id} />}
-                </div>
-              ))}
+              {col.map((l) => {
+                const act = actionOf(l);
+                const commercial = isCommercialAction(act);
+                return (
+                  <div key={l.id} className="space-y-1.5">
+                    <Link
+                      href={`/leads/${l.id}`}
+                      className={`nt-card nt-lift block p-3.5 ${commercial ? "border-l-[3px] border-l-[var(--lime-deep)]" : ""}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-sm font-semibold text-[var(--ink)]">{l.client}</span>
+                        <ScorePill score={l.score} />
+                      </div>
+                      <div className="mt-2"><OwnerBadge action={act} /></div>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--faint)]">
+                        <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {l.trajet}</span>
+                        <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {l.nb_voyageurs}</span>
+                      </div>
+                      <p className="mt-2 line-clamp-2 text-xs text-[var(--muted)]">{l.resume}</p>
+                      <div className="mt-2.5 flex items-center justify-between">
+                        <UrgenceBadge niveau={l.urgence} />
+                        <span className="text-sm font-semibold text-[var(--ink)]">{l.valeur != null ? eur(l.valeur) : "—"}</span>
+                      </div>
+                    </Link>
+                    {l.statut === "qualified" && <CallSim id={l.id} />}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );

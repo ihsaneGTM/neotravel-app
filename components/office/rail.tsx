@@ -26,23 +26,36 @@ const NAV = [
   { href: "/templates", label: "Templates", icon: FileText },
 ];
 
-export function Rail() {
+export function Rail({ leadActions = 0 }: { leadActions?: number }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const w = collapsed ? "w-[68px]" : "w-[228px]";
 
-  const item = (href: string, label: string, Icon: typeof Inbox) => {
+  const item = (href: string, label: string, Icon: typeof Inbox, badge?: number) => {
     const active = pathname === href || pathname.startsWith(href + "/");
+    const showBadge = !!badge && badge > 0;
     return (
       <Link
         href={href}
-        title={collapsed ? label : undefined}
-        className={`nt-press flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+        title={collapsed ? `${label}${showBadge ? ` — ${badge} à faire` : ""}` : undefined}
+        className={`nt-press relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
           active ? "bg-[var(--lime-soft)] text-[var(--forest)]" : "text-[var(--muted)] hover:bg-[var(--bg-soft)] hover:text-[var(--ink)]"
         }`}
       >
-        <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={active ? 2.4 : 2} />
+        <span className="relative shrink-0">
+          <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.4 : 2} />
+          {/* mode replié : pastille-point lime sur l'icône */}
+          {collapsed && showBadge && (
+            <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-[var(--lime-deep)] ring-2 ring-white" />
+          )}
+        </span>
         {!collapsed && <span>{label}</span>}
+        {/* mode déplié : pastille comptée à droite */}
+        {!collapsed && showBadge && (
+          <span className="ml-auto inline-flex min-w-[20px] items-center justify-center rounded-full bg-[var(--lime-soft)] px-1.5 py-0.5 text-[0.7rem] font-bold text-[var(--forest)] ring-1 ring-[var(--lime-deep)]">
+            {badge}
+          </span>
+        )}
       </Link>
     );
   };
@@ -78,7 +91,7 @@ export function Rail() {
       </Link>
 
       {/* Usage quotidien */}
-      <nav className="flex-1 space-y-1 px-3 py-3">{NAV.map((n) => <div key={n.href}>{item(n.href, n.label, n.icon)}</div>)}</nav>
+      <nav className="flex-1 space-y-1 px-3 py-3">{NAV.map((n) => <div key={n.href}>{item(n.href, n.label, n.icon, n.href === "/leads" ? leadActions : undefined)}</div>)}</nav>
 
       {/* Configuration (growth / ops) — dissociée du quotidien */}
       <div className="mx-3 border-t border-[var(--line-2)]" />

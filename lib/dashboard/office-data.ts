@@ -258,10 +258,18 @@ export interface LeadListItem {
   valeur: number | null;
   commercial: string | null;
   created_at: string;
+  /** Un devis ferme est généré et prêt à envoyer (pour distinguer "générer" vs "envoyer"). */
+  devis_pret: boolean;
+}
+
+/** Ensemble des demande_id ayant un devis ferme NON encore envoyé (prêt à envoyer). */
+async function devisFermesPrets(sb: SupabaseClient): Promise<Set<string>> {
+  const { data } = await sb.from("devis").select("demande_id").eq("type", "ferme").is("envoye_at", null);
+  return new Set(((data ?? []) as { demande_id: string }[]).map((r) => r.demande_id));
 }
 
 export async function getLeads(sb: SupabaseClient): Promise<LeadListItem[]> {
-  const demandes = await fetchDemandes(sb);
+  const [demandes, prets] = await Promise.all([fetchDemandes(sb), devisFermesPrets(sb)]);
   return demandes.map((d) => ({
     id: d.id,
     client: nomClient(d),
@@ -277,7 +285,16 @@ export async function getLeads(sb: SupabaseClient): Promise<LeadListItem[]> {
     valeur: d.valeur_panier_estimee != null ? Number(d.valeur_panier_estimee) : null,
     commercial: d.commerciaux?.nom ?? null,
     created_at: d.created_at,
+    devis_pret: prets.has(d.id),
   }));
+}
+
+/** Nombre de leads en attente d'une action COMMERCIALE (pour la pastille sidebar). */
+export async function getLeadActionCount(sb: SupabaseClient): Promise<number> {
+  const { data } = await sb.from("demandes").select("statut");
+  const rows = (data ?? []) as { statut: Statut }[];
+  // owner = commercial ⟺ statut ∈ {contacted, negotiation} (cf. lib/pipeline/lead-action.ts)
+  return rows.filter((r) => r.statut === "contacted" || r.statut === "negotiation").length;
 }
 
 export interface MapData {

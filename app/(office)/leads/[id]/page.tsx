@@ -9,6 +9,7 @@ import { Panel, StatusBadge, UrgenceBadge, ScorePill } from "@/components/office
 import { ScoreBar } from "@/components/office/charts";
 import { Shell } from "@/components/office/shell";
 import { LeadRouteMap } from "@/components/office/lead-route-map";
+import { LeadActionBar } from "@/components/office/lead-action-bar";
 import { avancerStatut, genererDevisFerme, envoyerDevis } from "@/app/commercial/actions";
 
 export const dynamic = "force-dynamic";
@@ -302,6 +303,29 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           </Panel>
         </div>
       </div>
+
+      {/* Espace pour que la barre flottante ne masque pas le dernier panneau */}
+      <div className="h-28" aria-hidden />
+
+      {/* Barre d'action flottante : prochaine action toujours visible + édition */}
+      <LeadActionBar
+        id={d.id}
+        statut={d.statut}
+        devisPret={!!devis && !devis.envoye_at}
+        hasEmail={!!d.clients?.email}
+        emailConfigure={emailConfigure}
+        email={d.clients?.email ?? null}
+        fields={{
+          ville_depart: d.ville_depart,
+          ville_arrivee: d.ville_arrivee ?? "",
+          date_depart: d.date_depart,
+          date_retour: d.date_retour ?? "",
+          nb_voyageurs: d.nb_voyageurs,
+          type_deplacement: d.type_deplacement,
+          type_prestation: d.type_prestation,
+          commentaire: d.commentaire ?? "",
+        }}
+      />
     </Shell>
   );
 }

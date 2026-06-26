@@ -29,6 +29,54 @@ function revalidateLead(id: string) {
   revalidatePath(`/leads/${id}`);
   revalidatePath("/leads");
   revalidatePath("/dashboard");
+  revalidatePath("/", "layout"); // rafraîchit la pastille d'actions de la sidebar
+}
+
+/**
+ * Édition manuelle d'un lead par le commercial : corrige les infos extraites par
+ * l'IA, met à jour les dates/voyageurs/type, ajoute une note. Ne touche PAS au statut.
+ * Si la ville d'arrivée change, on remet distance_km à null (recalcul au prochain devis).
+ */
+export async function modifierLead(formData: FormData) {
+  const id = String(formData.get("id"));
+  if (!id) throw new Error("id manquant.");
+
+  const str = (k: string) => {
+    const v = formData.get(k);
+    return v == null ? null : String(v).trim() || null;
+  };
+  const ville_depart = str("ville_depart");
+  const ville_arrivee = str("ville_arrivee");
+  const date_depart = str("date_depart");
+  const date_retour = str("date_retour");
+  const type_deplacement = str("type_deplacement");
+  const type_prestation = str("type_prestation");
+  const commentaire = str("commentaire");
+  const nb = Number(formData.get("nb_voyageurs"));
+
+  if (!ville_depart) throw new Error("La ville de départ est obligatoire.");
+  if (!Number.isFinite(nb) || nb <= 0) throw new Error("Le nombre de voyageurs doit être supérieur à 0.");
+  if (date_retour && date_depart && date_retour < date_depart) throw new Error("La date de retour est antérieure au départ.");
+
+  // Récupère l'état courant pour savoir si la ville d'arrivée a changé (→ recalcul distance).
+  const { data: cur } = await supabaseAdmin.from("demandes").select("ville_arrivee").eq("id", id).single();
+  const arriveeAvant = (cur as { ville_arrivee: string | null } | null)?.ville_arrivee ?? null;
+
+  const patch: Record<string, unknown> = {
+    ville_depart,
+    ville_arrivee,
+    date_depart,
+    date_retour,
+    nb_voyageurs: nb,
+    type_deplacement,
+    type_prestation,
+    commentaire,
+  };
+  if (arriveeAvant !== ville_arrivee) patch.distance_km = null; // forcera le recalcul au prochain devis
+
+  const { error } = await supabaseAdmin.from("demandes").update(patch).eq("id", id);
+  if (error) throw new Error(`Mise à jour impossible : ${error.message}`);
+  revalidateLead(id);
 }
 
 /** Change le statut d'un lead (le trigger journalise la transition dans statut_historique). */
