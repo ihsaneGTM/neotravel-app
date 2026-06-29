@@ -7,6 +7,7 @@
  *   Purge  : node --env-file=.env.local scripts/purge-demo.mjs
  */
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 
 const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -40,6 +41,43 @@ const ROUTES = [
 const PRESTATIONS = ["transfert", "navette", "scolaire", "seminaire", "tourisme", "mise_a_disposition"];
 const CANAUX = ["conversation_ia", "conversation_ia", "conversation_ia", "formulaire", "telephone", "email"];
 
+const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const dateLong = (d) => `${d.getUTCDate()} ${MOIS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+const TYPE_TXT = { aller_simple: "un aller simple", aller_retour: "un aller-retour", circuit: "un circuit" };
+
+/** Transcript IA ↔ prospect réaliste, dérivé des faits de la demande (démo Conversations + fiche). */
+function buildTranscript({ prenom, from, to, presta, pax, typeDeplacement, depart, retour, rappel }) {
+  const t = [];
+  const a = (text) => t.push({ role: "assistant", text });
+  const u = (text) => t.push({ role: "user", text });
+  a("Bonjour 👋 Je suis l'assistant NeoTravel. Pour préparer votre devis de transport en autocar, dites-moi : quel est votre trajet ?");
+  u(to ? `Bonjour, on aurait besoin d'un car de ${from} à ${to}.` : `Bonjour, on cherche un car au départ de ${from} pour une mise à disposition.`);
+  a(`Très bien, ${to ? `${from} → ${to}` : from}. S'agit-il d'un aller simple, d'un aller-retour ou d'un circuit ?\n::choices:: Type de déplacement ? || Aller simple | Aller-retour | Circuit`);
+  u(TYPE_TXT[typeDeplacement] ?? "un aller-retour");
+  a("Parfait. Pour quelle date partez-vous, et à quelle heure ?");
+  u(`Le ${dateLong(depart)}, vers 9h.`);
+  if (retour) {
+    a("Et la date de retour ?");
+    u(`Retour le ${dateLong(retour)}.`);
+  }
+  a("Combien de voyageurs serez-vous ?");
+  u(`Nous serons ${pax}.`);
+  if (rappel) {
+    a("Je note tout cela. Souhaitez-vous que je transmette à un conseiller ?");
+    u("Oui, je préfère être rappelé par quelqu'un directement.");
+    a("Bien sûr, un conseiller vous rappelle dans la journée. Je récupère vos coordonnées :\n::contact::");
+  } else {
+    a("Merci ! Il me reste vos coordonnées pour que le commercial vous envoie le devis :\n::contact::");
+  }
+  u(`${prenom} — coordonnées transmises ✅`);
+  a(
+    `Récapitulatif :\n- **Trajet** : ${to ? `${from} → ${to}` : `${from} (mise à disposition)`}\n- **Type** : ${(TYPE_TXT[typeDeplacement] ?? "aller-retour").replace("un ", "").replace("une ", "")}\n- **Départ** : ${dateLong(depart)} à 9h${retour ? `\n- **Retour** : ${dateLong(retour)}` : ""}\n- **Voyageurs** : ${pax}\n\nC'est bien noté ? Un commercial vous rappelle dans la journée avec votre devis.`
+  );
+  u("Oui c'est parfait, merci !");
+  a("Votre demande est transmise 🚌 Un conseiller NeoTravel revient vers vous très vite. Belle journée !");
+  return t;
+}
+
 // Funnel pondéré par ancienneté : récent → tôt dans le pipeline, ancien → abouti.
 function statutFor(dayOffset) {
   if (dayOffset <= 5) return pick(["new", "new", "new", "qualified", "qualified", "contacted"]);
@@ -59,6 +97,7 @@ const commIds = (comms ?? []).map((c) => c.id);
 let created = 0;
 let devisCount = 0;
 let relancesCount = 0;
+let convCount = 0;
 const now = Date.now();
 let devSeq = 41000;
 
@@ -82,6 +121,8 @@ for (let i = 0; i < N; i++) {
   const prenom = pick(PRENOMS);
   const nom = pick(NOMS);
   const email = `${prenom}.${nom}.${i}@${DEMO_DOMAIN}`.toLowerCase();
+  const canal = pick(CANAUX);
+  const rappel = Math.random() < 0.08; // ~8 % réclament un rappel humain
 
   // 1) client
   const { data: cli, error: cliErr } = await sb
@@ -108,9 +149,9 @@ for (let i = 0; i < N; i++) {
       date_retour: retour ? isoDate(retour) : null,
       nb_voyageurs: pax,
       type_prestation: presta,
-      canal: pick(CANAUX),
+      canal,
       // ~8 % de demandes où le prospect a réclamé un rappel humain (badge « Rappel demandé »).
-      options: Math.random() < 0.08 ? ["contact_humain"] : [],
+      options: rappel ? ["contact_humain"] : [],
       complexite: "simple",
       distance_km: route.km,
       valeur_panier_estimee: panier,
@@ -149,6 +190,37 @@ for (let i = 0; i < N; i++) {
     }));
     await sb.from("statut_historique").delete().eq("demande_id", dem.id);
     await sb.from("statut_historique").insert(rows);
+  }
+
+  // 2c) conversation IA — pour les demandes captées via le chat (visible sur la fiche).
+  if (canal === "conversation_ia") {
+    const transcript = buildTranscript({
+      prenom,
+      from: route.from,
+      to: isMAD ? null : route.to,
+      presta,
+      pax,
+      typeDeplacement,
+      depart,
+      retour,
+      rappel,
+    });
+    const convEnd = new Date(createdAt.getTime() + rndi(4, 18) * 60_000); // ~5-18 min d'échange
+    const last = transcript[transcript.length - 1].text.split("\n")[0].slice(0, 120);
+    const { error: convErr } = await sb.from("conversations").insert({
+      id: randomUUID(),
+      client_id: cli.id,
+      demande_id: dem.id,
+      statut: rappel ? "a_rappeler" : "terminee",
+      complexite: "simple",
+      transcript,
+      dernier_message: last,
+      nb_messages: transcript.length,
+      created_at: createdAt.toISOString(),
+      updated_at: convEnd.toISOString(),
+    });
+    if (convErr) console.log("conversation ERR", convErr.message);
+    else convCount++;
   }
 
   // 3) devis (estimation pour les qualifiés/contactés ; ferme pour quote_sent+)
@@ -218,5 +290,5 @@ for (let i = 0; i < N; i++) {
   if (i % 10 === 9) console.log(`… ${i + 1}/${N}`);
 }
 
-console.log(`\nSeed démo terminé : ${created} demandes, ${devisCount} devis, ${relancesCount} relances.`);
+console.log(`\nSeed démo terminé : ${created} demandes, ${devisCount} devis, ${relancesCount} relances, ${convCount} conversations.`);
 console.log(`Toutes marquées via email @${DEMO_DOMAIN} — purge : node --env-file=.env.local scripts/purge-demo.mjs`);

@@ -3,6 +3,8 @@ import { ArrowLeft, Sparkles, MapPin, Users, Calendar, Phone, Mail, ArrowRight, 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { computeScore, niveauUrgence } from "@/lib/pipeline/scoring";
 import { getScoringConfig } from "@/lib/config/app-config";
+import { getConversationByDemande } from "@/lib/dashboard/office-data";
+import { LeadConversation } from "@/components/office/lead-conversation";
 import { STATUTS, STATUT_LABEL, type Statut } from "@/lib/ui/statuts";
 import { leadAction } from "@/lib/pipeline/lead-action";
 import { slaInfo, WAIT_TIER_META } from "@/lib/pipeline/sla";
@@ -77,7 +79,7 @@ type Devis = {
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [{ data: dRaw }, { data: devisRaw }, { data: appelsRaw }, { data: relancesRaw }, { data: histoRaw }, scoring] = await Promise.all([
+  const [{ data: dRaw }, { data: devisRaw }, { data: appelsRaw }, { data: relancesRaw }, { data: histoRaw }, conversation, scoring] = await Promise.all([
     supabaseAdmin.from("demandes").select("*, clients(prenom, nom, email, telephone, consentement_rgpd), commerciaux(nom, email)").eq("id", id).single(),
     supabaseAdmin
       .from("devis")
@@ -87,6 +89,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     supabaseAdmin.from("appels").select("id, transcript, resume, duree_sec, source, created_at").eq("demande_id", id).order("created_at", { ascending: false }),
     supabaseAdmin.from("relances").select("statut, planifiee_pour").eq("demande_id", id),
     supabaseAdmin.from("statut_historique").select("changed_at").eq("demande_id", id).order("changed_at", { ascending: false }).limit(1),
+    getConversationByDemande(supabaseAdmin, id),
     getScoringConfig(supabaseAdmin),
   ]);
   const enteredAt = (histoRaw?.[0] as { changed_at: string } | undefined)?.changed_at ?? null;
@@ -278,6 +281,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               {d.commentaire?.trim() || "Pas de commentaire libre — demande qualifiée via les champs structurés."}
             </p>
           </Panel>
+          {conversation && conversation.transcript.length > 0 && <LeadConversation conv={conversation} />}
           {d.ville_arrivee && (
             <Panel title="Itinéraire" icon={MapPin}>
               <LeadRouteMap villes={villesTrajet} />

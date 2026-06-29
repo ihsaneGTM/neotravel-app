@@ -193,12 +193,49 @@ export async function getConversations(sb: SupabaseClient): Promise<Conversation
   }));
 }
 
+/** Conversation IA liée à une demande (pour l'afficher sur la fiche). Null si aucune. */
+export async function getConversationByDemande(sb: SupabaseClient, demandeId: string): Promise<ConversationItem | null> {
+  const { data } = await sb
+    .from("conversations")
+    .select("id, statut, complexite, demande_id, dernier_message, nb_messages, updated_at, transcript, clients(prenom, nom)")
+    .eq("demande_id", demandeId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const r = data as unknown as {
+    id: string; statut: string; complexite: string | null; demande_id: string | null;
+    dernier_message: string | null; nb_messages: number; updated_at: string;
+    transcript: { role: string; text: string }[] | null;
+    clients: { prenom: string | null; nom: string | null } | null;
+  };
+  return {
+    id: r.id,
+    statut: r.statut,
+    complexite: r.complexite,
+    client: r.clients ? [r.clients.prenom, r.clients.nom].filter(Boolean).join(" ") || null : null,
+    demande_id: r.demande_id,
+    dernier_message: r.dernier_message,
+    nb_messages: r.nb_messages,
+    updated_at: r.updated_at,
+    transcript: Array.isArray(r.transcript) ? r.transcript : [],
+  };
+}
+
 export interface AnalyticsData {
   total: number;
   pipeline_value: number;
   win_rate: number | null;
   avg_score: number;
   quotes_sent: number;
+  /** Délai de réponse (demande → envoi du devis) — l'enjeu n°1 de NeoTravel. */
+  sla: {
+    responded: number; // devis envoyés mesurés
+    avg_h: number | null; // délai moyen en heures
+    median_h: number | null; // délai médian
+    pct_24h: number | null; // % envoyés en moins de 24 h
+    pct_48h: number | null; // % envoyés en moins de 48 h
+  };
   funnel: { label: string; value: number; note: string }[];
   sources: { label: string; value: number }[];
   score_dist: { label: string; value: number }[];
@@ -217,9 +254,10 @@ const PRESTATION_LABEL: Record<string, string> = {
 };
 
 export async function getAnalytics(sb: SupabaseClient): Promise<AnalyticsData> {
-  const [demandes, devisRes, commsRes, scoring] = await Promise.all([
+  const [demandes, devisRes, devisEnvoyesRes, commsRes, scoring] = await Promise.all([
     fetchDemandes(sb),
     sb.from("devis").select("id", { count: "exact", head: true }),
+    sb.from("devis").select("demande_id, envoye_at").not("envoye_at", "is", null),
     sb.from("commerciaux").select("id, nom"),
     getScoringConfig(sb),
   ]);
@@ -243,6 +281,26 @@ export async function getAnalytics(sb: SupabaseClient): Promise<AnalyticsData> {
   const scores = demandes.map((d) => scoreOf(d, scoring));
   const avg_score = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
   const win_rate = counts.won + counts.lost === 0 ? null : Math.round((counts.won / (counts.won + counts.lost)) * 100);
+
+  // ── SLA de réponse : délai réel entre la demande et l'ENVOI du devis ──────────
+  // Mesuré sur les devis effectivement envoyés (envoye_at) — seule preuve fiable.
+  const createdById = new Map(demandes.map((d) => [d.id, d.created_at]));
+  const delaisH: number[] = [];
+  const seenDevisDemande = new Set<string>();
+  for (const r of (devisEnvoyesRes.data ?? []) as { demande_id: string; envoye_at: string }[]) {
+    if (seenDevisDemande.has(r.demande_id)) continue; // 1er envoi par demande
+    seenDevisDemande.add(r.demande_id);
+    const created = createdById.get(r.demande_id);
+    if (!created) continue;
+    const h = (new Date(r.envoye_at).getTime() - new Date(created).getTime()) / 3_600_000;
+    if (Number.isFinite(h) && h >= 0) delaisH.push(h);
+  }
+  delaisH.sort((a, b) => a - b);
+  const responded = delaisH.length;
+  const avg_h = responded ? Math.round((delaisH.reduce((a, b) => a + b, 0) / responded) * 10) / 10 : null;
+  const median_h = responded ? Math.round(delaisH[Math.floor((responded - 1) / 2)] * 10) / 10 : null;
+  const pctUnder = (limit: number) => (responded ? Math.round((delaisH.filter((h) => h <= limit).length / responded) * 100) : null);
+  const sla = { responded, avg_h, median_h, pct_24h: pctUnder(24), pct_48h: pctUnder(48) };
 
   const canalMap = new Map<string, number>();
   for (const d of demandes) canalMap.set(d.canal, (canalMap.get(d.canal) ?? 0) + 1);
@@ -277,7 +335,7 @@ export async function getAnalytics(sb: SupabaseClient): Promise<AnalyticsData> {
     .map(([nom, v]) => ({ nom, leads: v.leads, pipeline: v.pipeline, avg: v.leads ? Math.round(v.pipeline / v.leads) : 0 }))
     .sort((a, b) => b.pipeline - a.pipeline);
 
-  return { total, pipeline_value, win_rate, avg_score, quotes_sent: devisRes.count ?? 0, funnel, sources, score_dist, by_purpose, team };
+  return { total, pipeline_value, win_rate, avg_score, quotes_sent: devisRes.count ?? 0, sla, funnel, sources, score_dist, by_purpose, team };
 }
 
 export interface LeadListItem {

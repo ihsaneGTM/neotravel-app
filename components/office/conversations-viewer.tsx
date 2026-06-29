@@ -5,29 +5,9 @@ import Link from "next/link";
 import { MessageSquare, UserRound, ShieldQuestion, PhoneCall, ArrowUpRight } from "lucide-react";
 import type { ConversationItem } from "@/lib/dashboard/office-data";
 import { depuis } from "@/lib/ui/format";
-import { Rich } from "@/components/ui/rich-text";
+import { Transcript } from "@/components/office/transcript";
 
 type Filtre = "all" | "a_rappeler" | "anonymes" | "terminee";
-
-/** Sépare le texte affichable des marqueurs interactifs (QCM / formulaire). */
-function parseMarkers(text: string) {
-  let choices: { question: string; options: string[] } | null = null;
-  let contact = false;
-  const kept: string[] = [];
-  for (const line of text.split("\n")) {
-    const t = line.trim();
-    if (t.startsWith("::choices::")) {
-      const [q, opts] = t.slice("::choices::".length).trim().split("||");
-      const options = (opts ?? "").split("|").map((s) => s.trim()).filter(Boolean);
-      if (options.length) choices = { question: (q ?? "").trim(), options };
-    } else if (t.startsWith("::contact::")) {
-      contact = true;
-    } else {
-      kept.push(line);
-    }
-  }
-  return { display: kept.join("\n").trim(), choices, contact };
-}
 
 function statutMeta(s: string) {
   if (s === "a_rappeler") return { t: "À rappeler", c: "bg-[var(--terracotta-soft)] text-[var(--terracotta-ink)]", dot: "bg-[var(--terracotta)]" };
@@ -126,33 +106,8 @@ export function ConversationsViewer({ conversations }: { conversations: Conversa
               </div>
             )}
 
-            <div className="nt-scroll flex-1 space-y-3 overflow-y-auto bg-[var(--bg-soft)]/40 p-5">
-              {current.transcript.length === 0 && <p className="text-center text-sm text-[var(--faint)]">Transcript vide.</p>}
-              {current.transcript.map((msg, i) => {
-                if (msg.role === "user") {
-                  const t = msg.text.trim();
-                  if (!t) return null;
-                  return (
-                    <div key={i} className="flex justify-end">
-                      <div className="max-w-[78%] rounded-2xl bg-[var(--ink)] px-3.5 py-2 text-sm leading-relaxed text-[var(--cream)]"><Rich text={t} /></div>
-                    </div>
-                  );
-                }
-                const { display, choices, contact } = parseMarkers(msg.text);
-                if (!display && !choices && !contact) return null;
-                return (
-                  <div key={i} className="flex flex-col items-start gap-1.5">
-                    {display && <div className="max-w-[78%] rounded-2xl bg-white px-3.5 py-2 text-sm leading-relaxed text-[var(--ink)] shadow-sm"><Rich text={display} /></div>}
-                    {choices && (
-                      <div className="max-w-[80%] rounded-xl border border-dashed border-[var(--lime-deep)] bg-[var(--lime-soft)]/50 px-3 py-2">
-                        <p className="mb-1.5 text-[0.7rem] font-medium text-[var(--olive)]">Choix proposés{choices.question ? ` · ${choices.question}` : ""}</p>
-                        <div className="flex flex-wrap gap-1.5">{choices.options.map((o) => <span key={o} className="rounded-full bg-white px-2.5 py-1 text-xs text-[var(--muted)] shadow-sm">{o}</span>)}</div>
-                      </div>
-                    )}
-                    {contact && <div className="rounded-xl border border-dashed border-[var(--lime-deep)] bg-[var(--lime-soft)]/50 px-3 py-1.5 text-[0.7rem] font-medium text-[var(--forest)]">🧾 Formulaire de coordonnées proposé</div>}
-                  </div>
-                );
-              })}
+            <div className="nt-scroll flex-1 overflow-y-auto bg-[var(--bg-soft)]/40 p-5">
+              <Transcript messages={current.transcript} />
             </div>
           </>
         ) : (
