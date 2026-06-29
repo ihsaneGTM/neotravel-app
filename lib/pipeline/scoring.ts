@@ -21,19 +21,28 @@ const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 
-/** Paramétrage du scoring — source UNIQUE (affichée/éditée dans le Workflow). */
-export const SCORING = {
+/** Paramétrage du scoring — réglable depuis le Workflow (persisté en app_config). */
+export interface ScoringConfig {
   /** Fenêtre cible demande → envoi du devis (heures). */
-  slaTargetH: 24,
+  slaTargetH: number;
   /** Courbe de la pression délai (exposant ; > 1 = accélère vers l'échéance). */
-  slaCurve: 1.4,
+  slaCurve: number;
   /** Panier (€) atteignant 100 sur l'axe « taille du deal ». */
-  dealCapEur: 15000,
+  dealCapEur: number;
   /** Pondération des deux axes (somme = 1). */
-  poids: { sla: 0.6, deal: 0.4 },
+  poids: { sla: number; deal: number };
   /** Départ à ≤ N jours ⇒ « Urgent » (score forcé à 100). */
+  urgentDepartJours: number;
+}
+
+/** Valeurs par défaut (utilisées tant qu'aucun réglage n'est enregistré). */
+export const SCORING: ScoringConfig = {
+  slaTargetH: 24,
+  slaCurve: 1.4,
+  dealCapEur: 15000,
+  poids: { sla: 0.6, deal: 0.4 },
   urgentDepartJours: 7,
-} as const;
+};
 
 export interface ScoreInput {
   /** Horodatage de la demande (fin de conversation IA) — départ du chrono SLA. */
@@ -60,38 +69,38 @@ export interface LeadScore {
   joursAvantDepart: number;
 }
 
-export function computeScore(d: ScoreInput): LeadScore {
+export function computeScore(d: ScoreInput, cfg: ScoringConfig = SCORING): LeadScore {
   const now = Date.now();
 
   // Proximité du départ (référence : date de la demande, sinon maintenant).
   const dep = new Date(d.date_depart).getTime();
   const ref = d.date_demande ? new Date(d.date_demande).getTime() : now;
   const joursAvantDepart = Math.max(0, Math.round((dep - ref) / DAY));
-  const urgent = joursAvantDepart <= SCORING.urgentDepartJours;
+  const urgent = joursAvantDepart <= cfg.urgentDepartJours;
 
-  // Pression délai : chrono depuis la demande, rapporté à la cible 24 h.
+  // Pression délai : chrono depuis la demande, rapporté à la cible.
   const reqTs = d.created_at ? new Date(d.created_at).getTime() : ref;
   const heuresDepuisDemande = Math.max(0, (now - reqTs) / HOUR);
-  const ratio = Math.min(1, heuresDepuisDemande / SCORING.slaTargetH);
-  const slaPressureRaw = clamp(100 * Math.pow(ratio, SCORING.slaCurve));
+  const ratio = Math.min(1, heuresDepuisDemande / cfg.slaTargetH);
+  const slaPressureRaw = clamp(100 * Math.pow(ratio, cfg.slaCurve));
   // Une fois le devis envoyé, le SLA demande→devis est tenu → plus de pression.
   const slaPressure = d.devisEnvoye ? 0 : slaPressureRaw;
 
   // Taille du deal : panier rapporté au plafond.
   const panier = Number(d.valeur_panier_estimee) || 0;
-  const dealSize = clamp((panier / SCORING.dealCapEur) * 100);
+  const dealSize = clamp((panier / cfg.dealCapEur) * 100);
 
-  const score = urgent ? 100 : clamp(SCORING.poids.sla * slaPressure + SCORING.poids.deal * dealSize);
+  const score = urgent ? 100 : clamp(cfg.poids.sla * slaPressure + cfg.poids.deal * dealSize);
 
   return { score, urgent, slaPressure, dealSize, heuresDepuisDemande, joursAvantDepart };
 }
 
 /** Niveau d'urgence textuel (badge) à partir de la proximité du départ. */
-export function niveauUrgence(date_depart: string, date_demande?: string | null): "Urgent" | "High" | "Medium" | "Low" {
+export function niveauUrgence(date_depart: string, date_demande?: string | null, cfg: ScoringConfig = SCORING): "Urgent" | "High" | "Medium" | "Low" {
   const dep = new Date(date_depart).getTime();
   const base = date_demande ? new Date(date_demande).getTime() : Date.now();
   const jours = Math.round((dep - base) / DAY);
-  if (jours <= SCORING.urgentDepartJours) return "Urgent";
+  if (jours <= cfg.urgentDepartJours) return "Urgent";
   if (jours <= 21) return "High";
   if (jours <= 60) return "Medium";
   return "Low";

@@ -5,10 +5,10 @@ import { getPipelineMap, periodWindow, type Period } from "@/lib/dashboard/offic
 import { MODELS } from "@/lib/ai/models";
 import { SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { MATRICES_DEFAUT } from "@/lib/pricing/calculer-devis";
-import { SCORING } from "@/lib/pipeline/scoring";
+import { type ScoringConfig } from "@/lib/pipeline/scoring";
 import { resendConfigured } from "@/lib/email/resend";
 import { studioConfigured } from "@/lib/studio/config";
-import { getRelancesCadence } from "@/lib/config/app-config";
+import { getRelancesCadence, getScoringConfig } from "@/lib/config/app-config";
 
 // ── Types sérialisables (passés au composant client) ────────────────────────
 export type IconName = "chat" | "gauge" | "users" | "phone" | "file" | "bell" | "chart";
@@ -17,7 +17,8 @@ export type Section =
   | { type: "kv"; title?: string; rows: { k: string; v: string }[] }
   | { type: "table"; title?: string; columns: string[]; rows: string[][] }
   | { type: "code"; title?: string; text: string }
-  | { type: "cadence"; title?: string; offsets: number[] };
+  | { type: "cadence"; title?: string; offsets: number[] }
+  | { type: "scoring"; config: ScoringConfig };
 
 export interface SubPath {
   key: string;
@@ -143,6 +144,7 @@ export async function getWorkflow(sb: SupabaseClient, period: Period = "today"):
   const resend = resendConfigured();
   const studio = studioConfigured().ok;
   const cadence = await getRelancesCadence(sb);
+  const scoring = await getScoringConfig(sb);
   const M = MATRICES_DEFAUT;
   const live = await getWorkflowLive(sb, period); // badges live « ici » / « période » par brique
 
@@ -222,18 +224,9 @@ export async function getWorkflow(sb: SupabaseClient, period: Period = "today"):
         },
         {
           type: "note",
-          text: `Score = urgence d'action commerciale (qui traiter en premier). Départ ≤ ${SCORING.urgentDepartJours} j ⇒ « Urgent » : score forcé à 100 (priorité absolue). Sinon : pondération de la pression délai et de la taille du deal.`,
+          text: `Score = urgence d'action commerciale (qui traiter en premier). Départ ≤ ${scoring.urgentDepartJours} j ⇒ « Urgent » : score forcé à 100 (priorité absolue). Sinon : pondération de la pression délai et de la taille du deal. Réglable ci-dessous.`,
         },
-        {
-          type: "table",
-          title: "Scoring — lib/pipeline/scoring.ts",
-          columns: ["Critère", "Définition", "Poids"],
-          rows: [
-            ["Pression délai (SLA)", `chrono demande → devis, cible ${SCORING.slaTargetH} h (≈100 à l'approche, 100 au-delà ; nul une fois le devis envoyé)`, `${Math.round(SCORING.poids.sla * 100)} %`],
-            ["Taille du deal", `panier ÷ ${SCORING.dealCapEur.toLocaleString("fr-FR")} € (plafonné à 100)`, `${Math.round(SCORING.poids.deal * 100)} %`],
-            ["Urgent (départ imminent)", `départ ≤ ${SCORING.urgentDepartJours} j → score = 100, priorité absolue`, "override"],
-          ],
-        },
+        { type: "scoring", config: scoring },
       ],
       links: studio ? [{ label: "Ajuster le scoring (Studio)", href: "/studio" }] : [],
     },

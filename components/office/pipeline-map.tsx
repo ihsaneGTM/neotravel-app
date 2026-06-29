@@ -8,7 +8,8 @@ import {
   Plus, Minus, Maximize2, ArrowUpRight, X, Waypoints, Webhook, Plug, type LucideIcon,
 } from "lucide-react";
 import type { Brick, BrickLive, IconName, Section } from "@/lib/workflow/bricks";
-import { setRelancesCadence } from "@/app/(office)/workflow/actions";
+import type { ScoringConfig } from "@/lib/pipeline/scoring";
+import { setRelancesCadence, setScoringConfig } from "@/app/(office)/workflow/actions";
 
 const ICONS: Record<IconName, LucideIcon> = {
   chat: MessageSquare, gauge: Gauge, users: Users, phone: PhoneCall, file: FileText, bell: Bell, chart: BarChart3,
@@ -405,9 +406,54 @@ function CadenceEditor({ offsets, title }: { offsets: number[]; title?: string }
   );
 }
 
+/** Éditeur du paramétrage du scoring (poids délai/deal, cible SLA, seuil urgent). */
+function ScoringEditor({ config }: { config: ScoringConfig }) {
+  const [sla, setSla] = useState(Math.round(config.poids.sla * 100));
+  const [targetH, setTargetH] = useState(config.slaTargetH);
+  const [urgentJ, setUrgentJ] = useState(config.urgentDepartJours);
+  const [dealCap, setDealCap] = useState(config.dealCapEur);
+  const deal = 100 - sla;
+  const Field = ({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) => (
+    <label className="block">
+      <span className="mb-1 block text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--faint)]">{label}</span>
+      {children}
+      {hint && <span className="mt-0.5 block text-[0.66rem] text-[var(--faint)]">{hint}</span>}
+    </label>
+  );
+  const inputCls = "w-full rounded-lg border border-[var(--line)] bg-white px-2.5 py-1.5 text-sm outline-none focus:border-[var(--lime-deep)]";
+  return (
+    <form action={setScoringConfig} className="space-y-3.5">
+      <input type="hidden" name="poidsSla" value={sla / 100} />
+      <input type="hidden" name="poidsDeal" value={deal / 100} />
+      <input type="hidden" name="slaCurve" value={config.slaCurve} />
+      <div>
+        <div className="mb-1 flex items-center justify-between text-[0.7rem] font-semibold uppercase tracking-wide text-[var(--faint)]">
+          <span>Pondération</span>
+          <span className="text-[var(--muted)]">Délai {sla}% · Deal {deal}%</span>
+        </div>
+        <input type="range" min={0} max={100} step={5} value={sla} onChange={(e) => setSla(Number(e.target.value))} className="w-full accent-[var(--lime-deep)]" />
+        <p className="mt-0.5 text-[0.66rem] text-[var(--faint)]">Part de la pression délai vs la taille du deal dans le score.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Cible délai (h)" hint="demande → devis">
+          <input name="slaTargetH" type="number" min={1} value={targetH} onChange={(e) => setTargetH(Number(e.target.value))} className={inputCls} />
+        </Field>
+        <Field label="Seuil urgent (j)" hint="départ ≤ → score 100">
+          <input name="urgentDepartJours" type="number" min={0} value={urgentJ} onChange={(e) => setUrgentJ(Number(e.target.value))} className={inputCls} />
+        </Field>
+        <Field label="Panier à 100 (€)" hint="plafond taille deal">
+          <input name="dealCapEur" type="number" min={100} step={500} value={dealCap} onChange={(e) => setDealCap(Number(e.target.value))} className={inputCls} />
+        </Field>
+      </div>
+      <button type="submit" className="nt-press w-full rounded-xl bg-[var(--ink)] px-4 py-2 text-sm font-medium text-[var(--cream)] hover:bg-[#20231a]">Enregistrer le scoring</button>
+    </form>
+  );
+}
+
 function SectionView({ s }: { s: Section }) {
   if (s.type === "note") return <p className="text-sm leading-relaxed text-[var(--muted)]">{s.text}</p>;
   if (s.type === "cadence") return <CadenceEditor offsets={s.offsets} title={s.title} />;
+  if (s.type === "scoring") return <ScoringEditor config={s.config} />;
   if (s.type === "kv")
     return (
       <div>

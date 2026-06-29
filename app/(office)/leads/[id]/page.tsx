@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ArrowLeft, Sparkles, MapPin, Users, Calendar, Phone, Mail, ArrowRight, Zap, Send, CircleCheck, PhoneCall, Clock } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { computeScore, niveauUrgence, SCORING } from "@/lib/pipeline/scoring";
+import { computeScore, niveauUrgence } from "@/lib/pipeline/scoring";
+import { getScoringConfig } from "@/lib/config/app-config";
 import { STATUTS, STATUT_LABEL, type Statut } from "@/lib/ui/statuts";
 import { leadAction } from "@/lib/pipeline/lead-action";
 import { slaInfo, WAIT_TIER_META } from "@/lib/pipeline/sla";
@@ -76,7 +77,7 @@ type Devis = {
 
 export default async function LeadDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [{ data: dRaw }, { data: devisRaw }, { data: appelsRaw }, { data: relancesRaw }, { data: histoRaw }] = await Promise.all([
+  const [{ data: dRaw }, { data: devisRaw }, { data: appelsRaw }, { data: relancesRaw }, { data: histoRaw }, scoring] = await Promise.all([
     supabaseAdmin.from("demandes").select("*, clients(prenom, nom, email, telephone, consentement_rgpd), commerciaux(nom, email)").eq("id", id).single(),
     supabaseAdmin
       .from("devis")
@@ -86,6 +87,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     supabaseAdmin.from("appels").select("id, transcript, resume, duree_sec, source, created_at").eq("demande_id", id).order("created_at", { ascending: false }),
     supabaseAdmin.from("relances").select("statut, planifiee_pour").eq("demande_id", id),
     supabaseAdmin.from("statut_historique").select("changed_at").eq("demande_id", id).order("changed_at", { ascending: false }).limit(1),
+    getScoringConfig(supabaseAdmin),
   ]);
   const enteredAt = (histoRaw?.[0] as { changed_at: string } | undefined)?.changed_at ?? null;
   // Avancement des relances : échues = envoyées OU date passée (pour « En cours de relance » / « À rappeler »).
@@ -115,14 +117,17 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   const trajet = villesTrajet.join(" → ");
   const clientNom = [d.clients?.prenom, d.clients?.nom].filter(Boolean).join(" ") || "Prospect";
   const devisEnvoye = (["quote_sent", "negotiation", "won", "lost"] as Statut[]).includes(d.statut);
-  const s = computeScore({
-    created_at: d.created_at,
-    date_depart: d.date_depart,
-    date_demande: d.date_demande,
-    valeur_panier_estimee: d.valeur_panier_estimee,
-    devisEnvoye,
-  });
-  const urgence = niveauUrgence(d.date_depart, d.date_demande);
+  const s = computeScore(
+    {
+      created_at: d.created_at,
+      date_depart: d.date_depart,
+      date_demande: d.date_demande,
+      valeur_panier_estimee: d.valeur_panier_estimee,
+      devisEnvoye,
+    },
+    scoring
+  );
+  const urgence = niveauUrgence(d.date_depart, d.date_demande, scoring);
   // SLA d'attente : ancienneté de la demande + temps passé dans l'étape actuelle.
   const action = leadAction(d.statut, { devisPret: !!devis && !devis.envoye_at, relancesTotal, relancesDues });
   const sla = slaInfo(d.created_at, enteredAt, action.owner);
@@ -251,7 +256,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           </div>
         )}
         <p className="mt-2 text-xs text-[var(--faint)]">
-          Demande il y a {Math.round(s.heuresDepuisDemande)} h · {devisEnvoye ? "devis envoyé (SLA tenu)" : `${SCORING.slaTargetH} h max pour envoyer le devis`}. Score = priorité d'action.
+          Demande il y a {Math.round(s.heuresDepuisDemande)} h · {devisEnvoye ? "devis envoyé (SLA tenu)" : `${scoring.slaTargetH} h max pour envoyer le devis`}. Score = priorité d'action.
         </p>
       </div>
 

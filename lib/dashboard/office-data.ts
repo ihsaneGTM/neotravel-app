@@ -1,7 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { STATUTS, type Statut } from "@/lib/ui/statuts";
-import { computeScore, niveauUrgence } from "@/lib/pipeline/scoring";
+import { computeScore, niveauUrgence, SCORING, type ScoringConfig } from "@/lib/pipeline/scoring";
+import { getScoringConfig } from "@/lib/config/app-config";
 import { leadAction, isCommercialAction } from "@/lib/pipeline/lead-action";
 
 /** Compte, par demande, le total de relances et celles « échues » (envoyées ou dont la date est passée). */
@@ -65,18 +66,21 @@ export async function fetchDemandes(sb: SupabaseClient): Promise<DemandeRow[]> {
 const DEVIS_ENVOYE: ReadonlySet<Statut> = new Set(["quote_sent", "negotiation", "won", "lost"]);
 
 /** Score complet (urgence d'action) d'une demande. */
-export function scoreDetailOf(d: DemandeRow) {
-  return computeScore({
-    created_at: d.created_at,
-    date_depart: d.date_depart,
-    date_demande: d.date_demande,
-    valeur_panier_estimee: d.valeur_panier_estimee,
-    devisEnvoye: DEVIS_ENVOYE.has(d.statut),
-  });
+export function scoreDetailOf(d: DemandeRow, cfg: ScoringConfig = SCORING) {
+  return computeScore(
+    {
+      created_at: d.created_at,
+      date_depart: d.date_depart,
+      date_demande: d.date_demande,
+      valeur_panier_estimee: d.valeur_panier_estimee,
+      devisEnvoye: DEVIS_ENVOYE.has(d.statut),
+    },
+    cfg
+  );
 }
 
-export function scoreOf(d: DemandeRow): number {
-  return scoreDetailOf(d).score;
+export function scoreOf(d: DemandeRow, cfg: ScoringConfig = SCORING): number {
+  return scoreDetailOf(d, cfg).score;
 }
 
 // Trajet complet : départ → étapes intermédiaires → arrivée (ne perd aucune ville).
@@ -213,10 +217,11 @@ const PRESTATION_LABEL: Record<string, string> = {
 };
 
 export async function getAnalytics(sb: SupabaseClient): Promise<AnalyticsData> {
-  const [demandes, devisRes, commsRes] = await Promise.all([
+  const [demandes, devisRes, commsRes, scoring] = await Promise.all([
     fetchDemandes(sb),
     sb.from("devis").select("id", { count: "exact", head: true }),
     sb.from("commerciaux").select("id, nom"),
+    getScoringConfig(sb),
   ]);
   const total = demandes.length;
   const counts = Object.fromEntries(STATUTS.map((s) => [s, 0])) as Record<Statut, number>;
@@ -235,7 +240,7 @@ export async function getAnalytics(sb: SupabaseClient): Promise<AnalyticsData> {
   ];
 
   const pipeline_value = demandes.filter((d) => d.statut !== "won" && d.statut !== "lost").reduce((s, d) => s + (Number(d.valeur_panier_estimee) || 0), 0);
-  const scores = demandes.map(scoreOf);
+  const scores = demandes.map((d) => scoreOf(d, scoring));
   const avg_score = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
   const win_rate = counts.won + counts.lost === 0 ? null : Math.round((counts.won / (counts.won + counts.lost)) * 100);
 
@@ -308,21 +313,22 @@ async function devisFermesPrets(sb: SupabaseClient): Promise<Set<string>> {
 }
 
 export async function getLeads(sb: SupabaseClient): Promise<LeadListItem[]> {
-  const [demandes, prets, relances, entrees] = await Promise.all([
+  const [demandes, prets, relances, entrees, scoring] = await Promise.all([
     fetchDemandes(sb),
     devisFermesPrets(sb),
     relancesParDemande(sb),
     enteredAtParDemande(sb),
+    getScoringConfig(sb),
   ]);
   return demandes.map((d) => {
     const rel = relances.get(d.id) ?? { total: 0, dues: 0 };
-    const sc = scoreDetailOf(d);
+    const sc = scoreDetailOf(d, scoring);
     return {
       id: d.id,
       client: nomClient(d),
       contact: d.clients?.telephone ?? d.clients?.email ?? null,
       statut: d.statut,
-      urgence: niveauUrgence(d.date_depart, d.date_demande),
+      urgence: niveauUrgence(d.date_depart, d.date_demande, scoring),
       trajet: trajet(d),
       nb_voyageurs: d.nb_voyageurs,
       date_depart: d.date_depart,
@@ -363,16 +369,17 @@ export interface MapData {
 }
 
 export async function getPipelineMap(sb: SupabaseClient, modelAgent: string): Promise<MapData> {
-  const [demandes, devisRes, relancesRes, commsRes] = await Promise.all([
+  const [demandes, devisRes, relancesRes, commsRes, scoring] = await Promise.all([
     fetchDemandes(sb),
     sb.from("devis").select("id", { count: "exact", head: true }),
     sb.from("relances").select("id, statut, planifiee_pour"),
     sb.from("commerciaux").select("id", { count: "exact", head: true }).eq("actif", true),
+    getScoringConfig(sb),
   ]);
 
   const counts = Object.fromEntries(STATUTS.map((s) => [s, 0])) as Record<Statut, number>;
   for (const d of demandes) if (counts[d.statut] != null) counts[d.statut]++;
-  const scores = demandes.map(scoreOf);
+  const scores = demandes.map((d) => scoreOf(d, scoring));
   const avg_score = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
   const progresses = demandes.filter((d) => d.statut !== "new").length;
   const attribues = demandes.filter((d) => d.commerciaux != null).length;
@@ -426,7 +433,7 @@ export function periodWindow(period: Period) {
 }
 
 export async function getDashboard(sb: SupabaseClient, period: Period = "30d"): Promise<DashboardData> {
-  const [demandes, , devisDatesRes, relancesRes, aEnvoyerRes] = await Promise.all([
+  const [demandes, , devisDatesRes, relancesRes, aEnvoyerRes, scoring] = await Promise.all([
     fetchDemandes(sb),
     sb.from("devis").select("id", { count: "exact", head: true }),
     sb.from("devis").select("created_at"),
@@ -437,6 +444,7 @@ export async function getDashboard(sb: SupabaseClient, period: Period = "30d"): 
       .eq("type", "ferme")
       .is("envoye_at", null)
       .order("created_at", { ascending: false }),
+    getScoringConfig(sb),
   ]);
 
   const win = periodWindow(period);
@@ -453,7 +461,7 @@ export async function getDashboard(sb: SupabaseClient, period: Period = "30d"): 
 
   const active = demandesIn.filter((d) => d.statut !== "won" && d.statut !== "lost");
   const pipeline_value = active.reduce((s, d) => s + (Number(d.valeur_panier_estimee) || 0), 0);
-  const scores = demandesIn.map(scoreOf);
+  const scores = demandesIn.map((d) => scoreOf(d, scoring));
   const avg_score = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
   const won = counts.won;
   const lost = counts.lost;
@@ -479,8 +487,8 @@ export async function getDashboard(sb: SupabaseClient, period: Period = "30d"): 
       id: d.id,
       client: nomClient(d),
       trajet: trajet(d),
-      urgence: niveauUrgence(d.date_depart, d.date_demande),
-      score: scoreOf(d),
+      urgence: niveauUrgence(d.date_depart, d.date_demande, scoring),
+      score: scoreOf(d, scoring),
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
