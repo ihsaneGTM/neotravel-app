@@ -7,6 +7,8 @@ import { estimerDistanceKm } from "@/lib/geo/distance";
 import { DemandeSchema } from "@/lib/ai/schema";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { creerClientEtDemande, attribuerDemande, enregistrerDevis } from "@/lib/crm";
+import { sendEmail, renderEstimationEmail } from "@/lib/email/resend";
+import { dateFR } from "@/lib/ui/format";
 
 export const maxDuration = 30;
 
@@ -79,15 +81,37 @@ export async function POST(req: Request) {
             }
           }
 
+          // Prestation jamais demandée : déduite si fournie, sinon "transfert" par défaut (le commercial reclasse).
+          const prestation = input.type_prestation ?? "transfert";
+          // Demande de rappel humain → marqueur sur la demande (badge « Rappel demandé » côté commercial).
+          const options = input.souhaite_rappel ? [...(input.options ?? []), "contact_humain"] : input.options;
+
           const { demande_id, client_id } = await creerClientEtDemande(supabaseAdmin, {
             ...input,
+            type_prestation: prestation,
+            options,
             complexite: evalc.complexite,
             distance_km: distanceKm,
             valeur_panier_estimee: valeur_panier ?? null,
           });
-          const attr = await attribuerDemande(supabaseAdmin, demande_id, input.type_prestation);
+          const attr = await attribuerDemande(supabaseAdmin, demande_id, prestation);
           if (devis && attr.commercial) {
             await enregistrerDevis(supabaseAdmin, demande_id, devis, { type: "estimation", commercial_id: attr.commercial.id });
+          }
+
+          // Cas SIMPLE : estimation PROVISOIRE envoyée automatiquement par email (à confirmer par un conseiller).
+          // ⚠️ Divergence assumée vs règle .md « l'IA ne communique jamais de prix » : ici c'est un email
+          // système clairement indicatif (pas le chatbot), demandé pour accélérer les cas simples.
+          if (evalc.complexite === "simple" && devis && input.contact?.email) {
+            try {
+              const clientNom = [input.contact.prenom, input.contact.nom].filter(Boolean).join(" ") || "client";
+              const trajet = [input.ville_depart, ...(input.etapes ?? []), ...(input.ville_arrivee ? [input.ville_arrivee] : [])].join(" → ");
+              const dates = `${dateFR(input.date_depart)}${input.date_retour ? ` → ${dateFR(input.date_retour)}` : ""}`;
+              const { subject, html } = renderEstimationEmail({ client: clientNom, trajet, dates, nb_voyageurs: input.nb_voyageurs, prix_ttc: devis.prix_ttc });
+              await sendEmail({ to: input.contact.email, subject, html });
+            } catch {
+              /* email non configuré → on n'échoue pas : le commercial enverra le devis ferme */
+            }
           }
 
           // Lie la conversation au lead créé + statut (à rappeler si cas non-simple).

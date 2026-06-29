@@ -15,6 +15,7 @@ export interface DevisSignProps {
   trajet: string;
   typeLabel: string;
   dateDepart: string;
+  heureDepart: string | null;
   dateRetour: string | null;
   nbVoyageurs: number;
   vehiculeLabel: string;
@@ -53,7 +54,7 @@ export function DevisSign(props: DevisSignProps) {
   const rows: [string, string][] = [
     ["Trajet", props.trajet],
     ["Type de déplacement", props.typeLabel],
-    ["Date de départ", props.dateDepart],
+    ["Date de départ", props.heureDepart ? `${props.dateDepart} à ${props.heureDepart}` : props.dateDepart],
     ...(props.dateRetour ? ([["Date de retour", props.dateRetour]] as [string, string][]) : []),
     ["Nombre de passagers", String(props.nbVoyageurs)],
     ["Véhicule", `1 × ${props.vehiculeLabel}`],

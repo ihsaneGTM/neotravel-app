@@ -294,6 +294,8 @@ export interface LeadListItem {
   score: number;
   /** Départ imminent → priorité absolue (carte mise en valeur, tout en haut). */
   urgent: boolean;
+  /** Le prospect a demandé à être rappelé par un conseiller. */
+  contact_humain: boolean;
   valeur: number | null;
   commercial: string | null;
   created_at: string;
@@ -336,6 +338,7 @@ export async function getLeads(sb: SupabaseClient): Promise<LeadListItem[]> {
       resume: d.commentaire?.trim() || `${d.type_prestation} — ${trajet(d)}, ${d.nb_voyageurs} voyageurs.`,
       score: sc.score,
       urgent: sc.urgent,
+      contact_humain: (d.options ?? []).includes("contact_humain"),
       valeur: d.valeur_panier_estimee != null ? Number(d.valeur_panier_estimee) : null,
       commercial: d.commerciaux?.nom ?? null,
       created_at: d.created_at,

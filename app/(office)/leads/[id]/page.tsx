@@ -6,7 +6,7 @@ import { getScoringConfig } from "@/lib/config/app-config";
 import { STATUTS, STATUT_LABEL, type Statut } from "@/lib/ui/statuts";
 import { leadAction } from "@/lib/pipeline/lead-action";
 import { slaInfo, WAIT_TIER_META } from "@/lib/pipeline/sla";
-import { eur, eur2, depuis } from "@/lib/ui/format";
+import { eur, eur2, depuis, heureFR } from "@/lib/ui/format";
 import { resendConfigured } from "@/lib/email/resend";
 import { Panel, StatusBadge, UrgenceBadge, ScorePill } from "@/components/office/ui";
 import { ScoreBar } from "@/components/office/charts";
@@ -115,6 +115,8 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
   // Trajet complet : départ → étapes intermédiaires → arrivée.
   const villesTrajet = [d.ville_depart, ...etapes, ...(d.ville_arrivee ? [d.ville_arrivee] : [])];
   const trajet = villesTrajet.join(" → ");
+  const heureDep = heureFR(d.heure_depart);
+  const rappelDemande = (d.options ?? []).includes("contact_humain");
   const clientNom = [d.clients?.prenom, d.clients?.nom].filter(Boolean).join(" ") || "Prospect";
   const devisEnvoye = (["quote_sent", "negotiation", "won", "lost"] as Statut[]).includes(d.statut);
   const s = computeScore(
@@ -168,6 +170,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
     trajet,
     typeLabel: TYPE_LABEL[d.type_deplacement] ?? d.type_deplacement,
     dateDepart: dateFR(d.date_depart),
+    heureDepart: heureDep,
     dateRetour: d.date_retour ? dateFR(d.date_retour) : null,
     nbVoyageurs: d.nb_voyageurs,
     vehiculeLabel: vehiculeLabel(d.nb_voyageurs),
@@ -201,7 +204,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[var(--muted)]">
               <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {trajet}</span>
               <span className="flex items-center gap-1"><Users className="h-4 w-4" /> {d.nb_voyageurs} pax</span>
-              <span className="flex items-center gap-1"><Calendar className="h-4 w-4" /> {d.date_depart}{d.date_retour ? ` → ${d.date_retour}` : ""}</span>
+              <span className="flex items-center gap-1"><Calendar className="h-4 w-4" /> {dateFR(d.date_depart)}{heureDep ? ` à ${heureDep}` : ""}{d.date_retour ? ` → ${dateFR(d.date_retour)}` : ""}</span>
               {d.clients?.telephone && <span className="flex items-center gap-1"><Phone className="h-4 w-4" /> {d.clients.telephone}</span>}
               {d.clients?.email && <span className="flex items-center gap-1"><Mail className="h-4 w-4" /> {d.clients.email}</span>}
             </div>
@@ -231,13 +234,20 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
           </div>
         </div>
 
+        {rappelDemande && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl bg-[var(--forest)] px-4 py-3 text-[var(--cream)]">
+            <Phone className="h-4 w-4" />
+            <p className="text-sm font-semibold">Le client a demandé à être rappelé par un conseiller{d.clients?.telephone ? ` — ${d.clients.telephone}` : ""}.</p>
+          </div>
+        )}
+
         {/* AI Summary */}
         <div className="mt-4 rounded-xl bg-[var(--lime-soft)]/60 p-4">
           <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--forest)]">
             <Sparkles className="h-3.5 w-3.5" /> Résumé IA
           </p>
           <p className="text-sm text-[var(--muted)]">
-            {d.commentaire?.trim() || `${d.type_prestation} — ${trajet}, ${d.nb_voyageurs} voyageurs au départ du ${d.date_depart}.`}
+            {d.commentaire?.trim() || `${d.type_prestation} — ${trajet}, ${d.nb_voyageurs} voyageurs au départ du ${dateFR(d.date_depart)}${heureDep ? ` à ${heureDep}` : ""}.`}
           </p>
         </div>
 
@@ -279,7 +289,7 @@ export default async function LeadDetail({ params }: { params: Promise<{ id: str
               <Info label="Route" value={trajet} />
               <Info label="Voyageurs" value={String(d.nb_voyageurs)} />
               <Info label="Type" value={d.type_deplacement.replace(/_/g, " ")} />
-              <Info label="Dates" value={`${d.date_depart}${d.date_retour ? ` → ${d.date_retour}` : ""}`} />
+              <Info label="Dates" value={`${dateFR(d.date_depart)}${heureDep ? ` à ${heureDep}` : ""}${d.date_retour ? ` → ${dateFR(d.date_retour)}` : ""}`} />
               <Info label="Prestation" value={d.type_prestation} />
               <Info label="Distance" value={d.distance_km != null ? `${d.distance_km} km` : "à estimer"} />
               <Info label="Canal" value={d.canal.replace(/_/g, " ")} />

@@ -9,7 +9,7 @@ import { STATUTS, STATUT_LABEL, STATUT_META, type Statut } from "@/lib/ui/statut
 import { leadAction, isCommercialAction, boardColumnOf, BOARD_COLUMNS, BOARD_TO_STATUT, type BoardKey } from "@/lib/pipeline/lead-action";
 import { deplacerLead } from "@/app/commercial/actions";
 import { slaInfo, WAIT_TIER_META, type SlaInfo } from "@/lib/pipeline/sla";
-import { eur } from "@/lib/ui/format";
+import { eur, dateFR } from "@/lib/ui/format";
 import { StatusBadge, UrgenceBadge, ScorePill, OwnerBadge } from "./ui";
 
 /** Contexte d'action d'un lead (devis prêt + avancement des relances). */
@@ -78,8 +78,8 @@ export function LeadInbox({ leads }: { leads: LeadListItem[] }) {
     if (term) r = r.filter((l) => `${l.client} ${l.trajet} ${l.resume}`.toLowerCase().includes(term));
     r = [...r].sort((a, b) =>
       tri === "priorite"
-        ? // Urgents (départ imminent) toujours en tête, puis par score d'urgence d'action.
-          Number(b.urgent) - Number(a.urgent) || b.score - a.score
+        ? // Urgents (départ imminent) en tête, puis demandes de rappel humain, puis score.
+          Number(b.urgent) - Number(a.urgent) || Number(b.contact_humain) - Number(a.contact_humain) || b.score - a.score
         : tri === "score"
           ? b.score - a.score
           : tri === "valeur"
@@ -216,6 +216,15 @@ function UrgentBadge() {
   );
 }
 
+/** Pastille « Rappel demandé » — le prospect veut parler à un conseiller. */
+function RappelBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--forest)] px-2 py-0.5 text-[0.66rem] font-bold uppercase tracking-wide text-[var(--cream)]">
+      <PhoneCall className="h-3 w-3" /> Rappel demandé
+    </span>
+  );
+}
+
 function LeadRow({ l }: { l: LeadListItem }) {
   return (
     <Link href={`/leads/${l.id}`} className={`nt-card nt-lift block p-4 ${l.urgent ? "ring-2 ring-[var(--terracotta)]" : ""}`}>
@@ -224,6 +233,7 @@ function LeadRow({ l }: { l: LeadListItem }) {
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-[var(--ink)]">{l.client}</span>
             {l.urgent && <UrgentBadge />}
+            {l.contact_humain && <RappelBadge />}
             <StatusBadge statut={l.statut} />
             <OwnerBadge action={actionOf(l)} />
             <WaitChip sla={slaOf(l)} />
@@ -232,7 +242,7 @@ function LeadRow({ l }: { l: LeadListItem }) {
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--muted)]">
             <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {l.trajet}</span>
             <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {l.nb_voyageurs} pax</span>
-            <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> {l.date_depart}</span>
+            <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> {dateFR(l.date_depart)}</span>
           </div>
           <p className="mt-2 flex items-start gap-1.5 text-sm text-[var(--muted)]">
             <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--olive)]" />
@@ -364,7 +374,7 @@ function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statu
                         <span className="text-sm font-semibold text-[var(--ink)]">{l.client}</span>
                         <ScorePill score={l.score} />
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5">{l.urgent && <UrgentBadge />}<OwnerBadge action={act} /><WaitChip sla={slaOf(l)} dense /></div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">{l.urgent && <UrgentBadge />}{l.contact_humain && <RappelBadge />}<OwnerBadge action={act} /><WaitChip sla={slaOf(l)} dense /></div>
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--faint)]">
                         <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {l.trajet}</span>
                         <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {l.nb_voyageurs}</span>

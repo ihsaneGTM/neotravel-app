@@ -23,6 +23,7 @@ export interface DevisPdfInput {
   trajet: string; // "Paris → Lyon"
   typeLabel: string; // "Aller-retour"
   dateDepart: string;
+  heureDepart?: string | null;
   dateRetour: string | null;
   nbVoyageurs: number;
   nbVehicules: number;
@@ -95,7 +96,7 @@ export async function generateDevisPDF(input: DevisPdfInput): Promise<Buffer> {
     // La flèche "→" n'existe pas dans l'encodage Helvetica (pdfkit) → tiret style itinéraire.
     ["Trajet", input.trajet.replace(/\s*→\s*/g, " – ")],
     ["Type de déplacement", input.typeLabel],
-    ["Date de départ", input.dateDepart],
+    ["Date de départ", input.heureDepart ? `${input.dateDepart} à ${input.heureDepart}` : input.dateDepart],
     ...(input.dateRetour ? ([["Date de retour", input.dateRetour]] as [string, string][]) : []),
     ["Nombre de passagers", String(input.nbVoyageurs)],
     ["Véhicule", `${input.nbVehicules} × ${input.vehiculeLabel}`],

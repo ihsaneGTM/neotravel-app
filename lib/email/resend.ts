@@ -86,3 +86,44 @@ export function renderDevisEmail(input: {
 
   return { subject: `Votre devis NeoTravel ${input.numero}`, html };
 }
+
+/**
+ * Estimation PROVISOIRE envoyée automatiquement pour les demandes simples.
+ * Clairement indicative et sujette à confirmation — un conseiller envoie le devis définitif.
+ */
+export function renderEstimationEmail(input: {
+  client: string;
+  trajet: string;
+  dates: string;
+  nb_voyageurs: number;
+  prix_ttc: number;
+}): { subject: string; html: string } {
+  const eur = (n: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 0 }).format(n);
+  const html = `<!doctype html><html><body style="margin:0;background:#f4f3e8;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:28px 20px;">
+    <div style="background:#ffffff;border:1px solid #e6e4d6;border-radius:18px;overflow:hidden;box-shadow:0 4px 16px rgba(22,23,14,.06);">
+      <div style="background:#16170e;padding:24px 28px;">
+        <p style="margin:0;font-size:13px;font-weight:800;color:#ffffff;">Neo<span style="color:#d8e762;">Travel</span></p>
+        <p style="margin:4px 0 0;font-size:11px;color:rgba(255,255,255,.6);">Transport d'autocars avec chauffeur</p>
+      </div>
+      <div style="padding:28px;">
+        <span style="display:inline-block;background:#eef3c2;color:#2c3a1b;font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.4px;">Estimation provisoire</span>
+        <h1 style="margin:12px 0 4px;font-size:20px;color:#16170e;font-weight:800;">Une première estimation de votre voyage</h1>
+        <p style="margin:0 0 20px;color:#595b4c;font-size:14px;line-height:1.5;">Bonjour ${input.client},<br/>Merci pour votre demande. Voici une <b style="color:#16170e;">estimation indicative</b> en attendant votre devis définitif, qu'un conseiller vous confirme très vite.</p>
+        <table style="width:100%;font-size:14px;border-collapse:collapse;">
+          <tr><td style="padding:7px 0;color:#8a8c7d;border-bottom:1px solid #f1f0e6;">Trajet</td><td style="padding:7px 0;text-align:right;color:#16170e;font-weight:600;border-bottom:1px solid #f1f0e6;">${input.trajet}</td></tr>
+          <tr><td style="padding:7px 0;color:#8a8c7d;border-bottom:1px solid #f1f0e6;">Dates</td><td style="padding:7px 0;text-align:right;color:#16170e;font-weight:600;border-bottom:1px solid #f1f0e6;">${input.dates}</td></tr>
+          <tr><td style="padding:7px 0;color:#8a8c7d;">Voyageurs</td><td style="padding:7px 0;text-align:right;color:#16170e;font-weight:600;">${input.nb_voyageurs}</td></tr>
+        </table>
+        <div style="margin-top:20px;padding:16px 20px;background:#d8e762;border-radius:14px;text-align:center;">
+          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:.5px;color:#2c3a1b;text-transform:uppercase;">Estimation à partir de</p>
+          <p style="margin:4px 0 0;font-size:28px;font-weight:800;color:#16170e;">${eur(input.prix_ttc)}</p>
+          <p style="margin:2px 0 0;font-size:11px;color:#2c3a1b;">TTC indicatif · TVA 10% incluse</p>
+        </div>
+        <p style="margin:18px 0 0;color:#8a8c7d;font-size:12px;line-height:1.5;"><b style="color:#595b4c;">Montant non contractuel</b> : il peut varier selon les disponibilités et les détails finaux. Votre conseiller NeoTravel vous adresse le devis définitif sous 24 h.</p>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#8a8c7d;font-size:11px;">NeoTravel · devis@neotravel.fr · 01 84 80 12 34</p>
+  </div></body></html>`;
+  return { subject: "Votre estimation NeoTravel (provisoire)", html };
+}

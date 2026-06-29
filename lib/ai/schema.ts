@@ -35,11 +35,14 @@ export const DemandeSchema = z.object({
   heure_depart: z.string().optional(),
   heure_retour: z.string().optional(),
   nb_voyageurs: z.number().int().positive(),
-  type_prestation: TypePrestation,
+  // Jamais demandé au prospect : déduit du contexte si mentionné, sinon classé par le commercial.
+  type_prestation: TypePrestation.optional(),
   options: z.array(z.string()).default([]),
   budget_indicatif: z.number().positive().optional(),
   commentaire: z.string().optional(),
   type_client: TypeClient.default("particulier"),
+  /** Le prospect a demandé à parler à un humain / être rappelé par un conseiller. */
+  souhaite_rappel: z.boolean().optional(),
   contact: ContactSchema.optional(),
 });
 

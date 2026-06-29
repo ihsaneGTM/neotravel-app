@@ -1,21 +1,17 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { DevisSign } from "@/components/devis-sign";
+import { dateFR, heureFR } from "@/lib/ui/format";
 
 export const dynamic = "force-dynamic";
 
 const TYPE_LABEL: Record<string, string> = { aller_simple: "Aller simple", aller_retour: "Aller-retour", circuit: "Circuit multi-étapes" };
 const vehiculeLabel = (nb: number) => (nb <= 19 ? "Minibus" : nb <= 53 ? "Autocar standard" : "Autocar grand tourisme");
-const dateFR = (iso: string | null) => {
-  if (!iso) return null;
-  const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
-};
 
 export default async function DevisPublicPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { data: dvRaw } = await supabaseAdmin
     .from("devis")
-    .select("id, prix_ttc, numero, envoye_at, demande_id, demandes(ville_depart, ville_arrivee, etapes, date_depart, date_retour, type_deplacement, nb_voyageurs, statut, clients(prenom, nom, email, telephone))")
+    .select("id, prix_ttc, numero, envoye_at, demande_id, demandes(ville_depart, ville_arrivee, etapes, date_depart, heure_depart, date_retour, type_deplacement, nb_voyageurs, statut, clients(prenom, nom, email, telephone))")
     .eq("id", id)
     .single();
 
@@ -30,6 +26,7 @@ export default async function DevisPublicPage({ params }: { params: Promise<{ id
       ville_arrivee: string | null;
       etapes: string[] | null;
       date_depart: string;
+      heure_depart: string | null;
       date_retour: string | null;
       type_deplacement: string;
       nb_voyageurs: number;
@@ -62,12 +59,13 @@ export default async function DevisPublicPage({ params }: { params: Promise<{ id
       clientTel={d.clients?.telephone ?? null}
       trajet={trajet}
       typeLabel={TYPE_LABEL[d.type_deplacement] ?? d.type_deplacement}
-      dateDepart={dateFR(d.date_depart) ?? d.date_depart}
-      dateRetour={dateFR(d.date_retour)}
+      dateDepart={dateFR(d.date_depart)}
+      heureDepart={heureFR(d.heure_depart)}
+      dateRetour={d.date_retour ? dateFR(d.date_retour) : null}
       nbVoyageurs={d.nb_voyageurs}
       vehiculeLabel={vehiculeLabel(d.nb_voyageurs)}
       prixTTC={dv.prix_ttc}
-      dateDevis={dateFR(dv.envoye_at ? dv.envoye_at.slice(0, 10) : new Date().toISOString().slice(0, 10)) ?? ""}
+      dateDevis={dateFR(dv.envoye_at ? dv.envoye_at.slice(0, 10) : new Date().toISOString().slice(0, 10))}
       signed={d.statut === "won"}
       enNegociation={d.statut === "negotiation"}
     />

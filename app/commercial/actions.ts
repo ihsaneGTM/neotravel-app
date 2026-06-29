@@ -19,6 +19,7 @@ import { sendEmail, renderDevisEmail } from "@/lib/email/resend";
 import { generateDevisPDF } from "@/lib/pdf/devis-pdf";
 import { getRelancesCadence } from "@/lib/config/app-config";
 import { PROD_URL } from "@/lib/studio/config";
+import { heureFR } from "@/lib/ui/format";
 
 const TYPE_LABEL: Record<string, string> = {
   aller_simple: "Aller simple",
@@ -274,7 +275,7 @@ export async function envoyerDevis(formData: FormData) {
   const [{ data: demRaw }, { data: devisRaw }] = await Promise.all([
     supabaseAdmin
       .from("demandes")
-      .select("type_deplacement, ville_depart, ville_arrivee, etapes, date_depart, date_retour, nb_voyageurs, clients(prenom, nom, email, telephone)")
+      .select("type_deplacement, ville_depart, ville_arrivee, etapes, date_depart, heure_depart, date_retour, nb_voyageurs, clients(prenom, nom, email, telephone)")
       .eq("id", id)
       .single(),
     supabaseAdmin.from("devis").select("id, prix_ttc, lignes, numero").eq("demande_id", id).eq("type", "ferme").order("created_at", { ascending: false }).limit(1),
@@ -286,6 +287,7 @@ export async function envoyerDevis(formData: FormData) {
     ville_arrivee: string | null;
     etapes: string[] | null;
     date_depart: string;
+    heure_depart: string | null;
     date_retour: string | null;
     nb_voyageurs: number;
     clients: { prenom: string | null; nom: string | null; email: string | null; telephone: string | null } | null;
@@ -322,6 +324,7 @@ export async function envoyerDevis(formData: FormData) {
     trajet,
     typeLabel: TYPE_LABEL[dem.type_deplacement] ?? dem.type_deplacement,
     dateDepart: dateFR(dem.date_depart),
+    heureDepart: heureFR(dem.heure_depart),
     dateRetour: dem.date_retour ? dateFR(dem.date_retour) : null,
     nbVoyageurs: dem.nb_voyageurs,
     nbVehicules: 1,

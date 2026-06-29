@@ -109,6 +109,8 @@ for (let i = 0; i < N; i++) {
       nb_voyageurs: pax,
       type_prestation: presta,
       canal: pick(CANAUX),
+      // ~8 % de demandes où le prospect a réclamé un rappel humain (badge « Rappel demandé »).
+      options: Math.random() < 0.08 ? ["contact_humain"] : [],
       complexite: "simple",
       distance_km: route.km,
       valeur_panier_estimee: panier,
