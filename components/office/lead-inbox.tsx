@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search, List, LayoutGrid, MapPin, Users, Calendar, Sparkles, PhoneCall, Loader2, Clock } from "lucide-react";
 import type { LeadListItem } from "@/lib/dashboard/office-data";
 import { STATUTS, STATUT_LABEL, STATUT_META, type Statut } from "@/lib/ui/statuts";
-import { leadAction, isCommercialAction, boardColumnOf, BOARD_COLUMNS, type BoardKey } from "@/lib/pipeline/lead-action";
+import { leadAction, isCommercialAction, boardColumnOf, BOARD_COLUMNS, BOARD_TO_STATUT, type BoardKey } from "@/lib/pipeline/lead-action";
+import { deplacerLead } from "@/app/commercial/actions";
 import { slaInfo, WAIT_TIER_META, type SlaInfo } from "@/lib/pipeline/sla";
 import { eur } from "@/lib/ui/format";
 import { StatusBadge, UrgenceBadge, ScorePill, OwnerBadge } from "./ui";
@@ -253,10 +254,38 @@ const HIGHLIGHT_BOARD: Partial<Record<Statut, BoardKey>> = { quote_sent: "devis_
 
 function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statut | null }) {
   const hiCol = highlight ? (HIGHLIGHT_BOARD[highlight] ?? (highlight as BoardKey)) : null;
+  const router = useRouter();
+  const [, startMove] = useTransition();
+  // Déplacements optimistes (id → colonne cible), nettoyés quand les données serveur changent.
+  const [moved, setMoved] = useState<Record<string, BoardKey>>({});
+  const [dragOver, setDragOver] = useState<BoardKey | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  useEffect(() => setMoved({}), [leads]);
+
+  const colOf = (l: LeadListItem) => moved[l.id] ?? boardOf(l);
+
+  const onDrop = (target: BoardKey, id: string) => {
+    setDragOver(null);
+    setDragId(null);
+    if (!id) return;
+    const lead = leads.find((l) => l.id === id);
+    if (!lead) return;
+    // No-op si la cible mappe vers le même statut DB (ex. sous-colonnes de quote_sent).
+    if (BOARD_TO_STATUT[colOf(lead)] === BOARD_TO_STATUT[target]) return;
+    setMoved((m) => ({ ...m, [id]: target }));
+    startMove(async () => {
+      try {
+        await deplacerLead({ id, board: target });
+      } finally {
+        router.refresh();
+      }
+    });
+  };
+
   return (
     <div className="nt-scroll flex gap-4 overflow-x-auto pb-3 pt-1 px-0.5">
       {BOARD_COLUMNS.map((bc) => {
-        const col = leads.filter((l) => boardOf(l) === bc.key);
+        const col = leads.filter((l) => colOf(l) === bc.key);
         const isHi = bc.key === hiCol;
         const commercialCol = bc.owner === "commercial";
         const actions = commercialCol ? col.length : 0;
@@ -267,10 +296,19 @@ function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statu
           <div
             key={bc.key}
             ref={isHi ? (el) => el?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }) : undefined}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(bc.key); }}
+            onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver((d) => (d === bc.key ? null : d)); }}
+            onDrop={(e) => { e.preventDefault(); onDrop(bc.key, e.dataTransfer.getData("text/plain")); }}
             className={`w-[280px] shrink-0 rounded-2xl p-2.5 transition-colors ${
-              isHi ? "nt-pop" : commercialCol && actions > 0 ? "ring-1 ring-[var(--lime-deep)]" : ""
+              dragOver === bc.key
+                ? "ring-2 ring-[var(--ink)] bg-[var(--lime-soft)]/40"
+                : isHi
+                  ? "nt-pop"
+                  : commercialCol && actions > 0
+                    ? "ring-1 ring-[var(--lime-deep)]"
+                    : ""
             } ${greyed ? "bg-[var(--bg-soft)]" : ""}`}
-            style={isHi ? { background: "color-mix(in srgb, var(--lime-soft) 55%, transparent)" } : undefined}
+            style={isHi && dragOver !== bc.key ? { background: "color-mix(in srgb, var(--lime-soft) 55%, transparent)" } : undefined}
           >
             <div className="mb-3 flex items-center gap-2">
               <span className="h-2 w-2 rounded-full" style={{ background: greyed ? "var(--line-2)" : bc.hex }} />
@@ -309,7 +347,12 @@ function Kanban({ leads, highlight }: { leads: LeadListItem[]; highlight?: Statu
                   <div key={l.id} className="space-y-1.5">
                     <Link
                       href={`/leads/${l.id}`}
-                      className={`nt-card nt-lift block p-3.5 ${
+                      draggable
+                      onDragStart={(e) => { setDragId(l.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", l.id); }}
+                      onDragEnd={() => { setDragId(null); setDragOver(null); }}
+                      className={`nt-card nt-lift block cursor-grab p-3.5 active:cursor-grabbing ${
+                        dragId === l.id ? "opacity-50" : ""
+                      } ${
                         l.urgent
                           ? "bg-[var(--terracotta-soft)] ring-2 ring-[var(--terracotta)]"
                           : commercial

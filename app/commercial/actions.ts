@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { transitionStatut, enregistrerDevis } from "@/lib/crm";
+import { BOARD_TO_STATUT, type BoardKey } from "@/lib/pipeline/lead-action";
 import { calculerDevis, DevisError, type TypeDeplacement } from "@/lib/pricing/calculer-devis";
 import {
   computeDevisAjuste,
@@ -104,6 +105,14 @@ export async function avancerStatut(formData: FormData) {
   const id = String(formData.get("id"));
   await transitionStatut(supabaseAdmin, id, String(formData.get("statut")));
   revalidateLead(id);
+}
+
+/** Déplace un lead vers une colonne du board (drag-and-drop Kanban). */
+export async function deplacerLead(input: { id: string; board: BoardKey }) {
+  const statut = BOARD_TO_STATUT[input.board];
+  if (!statut) throw new Error(`Colonne inconnue : ${input.board}`);
+  await transitionStatut(supabaseAdmin, input.id, statut);
+  revalidateLead(input.id);
 }
 
 /**

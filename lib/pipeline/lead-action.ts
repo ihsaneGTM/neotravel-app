@@ -102,6 +102,19 @@ export const BOARD_COLUMNS: BoardColumn[] = [
   { key: "lost", label: "Perdu", owner: "done", hex: "#b4452f" },
 ];
 
+/** Statut DB cible quand on dépose un lead dans une colonne (drag-and-drop). */
+export const BOARD_TO_STATUT: Record<BoardKey, Statut> = {
+  new: "new",
+  qualified: "qualified",
+  contacted: "contacted",
+  devis_envoye: "quote_sent",
+  relance: "quote_sent",
+  a_rappeler: "quote_sent",
+  negotiation: "negotiation",
+  won: "won",
+  lost: "lost",
+};
+
 /** Colonne board d'un lead à partir de son statut (+ avancement des relances). */
 export function boardColumnOf(statut: Statut, ctx: LeadActionCtx = {}): BoardKey {
   if (statut === "quote_sent") {
