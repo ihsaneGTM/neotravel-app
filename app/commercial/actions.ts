@@ -18,6 +18,7 @@ import { estimerDistanceKm } from "@/lib/geo/distance";
 import { sendEmail, renderDevisEmail } from "@/lib/email/resend";
 import { generateDevisPDF } from "@/lib/pdf/devis-pdf";
 import { getRelancesCadence } from "@/lib/config/app-config";
+import { PROD_URL } from "@/lib/studio/config";
 
 const TYPE_LABEL: Record<string, string> = {
   aller_simple: "Aller simple",
@@ -331,7 +332,15 @@ export async function envoyerDevis(formData: FormData) {
     aCharge: ["Péages autoroutiers", "Parkings éventuels"],
   });
 
-  const { subject, html } = renderDevisEmail({ numero, client, trajet, dates, nb_voyageurs: dem.nb_voyageurs, prix_ttc: devis.prix_ttc });
+  const { subject, html } = renderDevisEmail({
+    numero,
+    client,
+    trajet,
+    dates,
+    nb_voyageurs: dem.nb_voyageurs,
+    prix_ttc: devis.prix_ttc,
+    signUrl: `${PROD_URL}/devis/${devis.id}`,
+  });
   const resend_id = await sendEmail({
     to: email,
     subject,

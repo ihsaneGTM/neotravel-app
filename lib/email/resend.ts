@@ -44,6 +44,8 @@ export function renderDevisEmail(input: {
   dates: string;
   nb_voyageurs: number;
   prix_ttc: number;
+  /** Lien vers la page publique pour consulter et signer le devis en ligne. */
+  signUrl?: string;
 }): { subject: string; html: string } {
   const eur = (n: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 }).format(n);
 
@@ -70,6 +72,11 @@ export function renderDevisEmail(input: {
           <p style="margin:4px 0 0;font-size:28px;font-weight:800;color:#16170e;">${eur(input.prix_ttc)}</p>
           <p style="margin:2px 0 0;font-size:11px;color:#2c3a1b;">TVA 10% incluse</p>
         </div>
+
+        ${input.signUrl ? `<div style="margin-top:22px;text-align:center;">
+          <a href="${input.signUrl}" style="display:inline-block;background:#16170e;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 30px;border-radius:999px;">Consulter et signer le devis en ligne →</a>
+          <p style="margin:10px 0 0;font-size:11px;color:#8a8c7d;">Acceptez votre devis en un clic, ou demandez une modification.</p>
+        </div>` : ""}
 
         <p style="margin:22px 0 0;color:#8a8c7d;font-size:12px;line-height:1.5;">Devis valable 30 jours, sous réserve de disponibilité à la réservation. Votre conseiller NeoTravel reste à votre disposition pour toute précision.</p>
       </div>
