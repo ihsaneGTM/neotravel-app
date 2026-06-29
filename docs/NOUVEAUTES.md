@@ -44,6 +44,12 @@ L'enjeu n°1 identifié : ne pas faire attendre les prospects (historique : ~50 
 - **Envoi manuel** (bouton « Envoyer la relance ») **et automatique** via **cron Vercel quotidien** (`/api/cron/relances`, protégé par `CRON_SECRET`).
 - Garde-fous : pas de relance sur un deal clos (annulée), ni vers une adresse de démo factice.
 
+## 10. Qualification automatique & colonne « Nouveau »
+Clarification du flux après la conversation IA :
+- **Cas simple** (qualifiable automatiquement) → l'IA passe la demande en **Qualifié** + l'attribue, puis l'appel auto la fait passer en **Contacté** (1ʳᵉ action commerciale).
+- **Cas complexe** (> 85 pax, circuit, départ < 48 h, incohérent) **ou demande de rappel humain** → la demande **reste en « Nouveau »** = à trier par un humain. « Nouveau » devient donc **actionnable** : bouton **« Prendre en charge »** (→ Qualifié).
+- Règle de cohérence : une conversation **terminée** implique un lead **≥ Qualifié** ; un lead « Nouveau » n'a qu'une conversation **escaladée (« à rappeler »)**. Le seed de démo respecte désormais cette règle.
+
 ---
 
 ## Divergences assumées vs dossier de cadrage

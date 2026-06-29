@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { attribuer, type CommercialAttrib } from "../pipeline/attribution";
 import type { DevisResult } from "../pricing/calculer-devis";
+import type { Statut } from "../ui/statuts";
 
 /**
  * Couche CRM — écritures serveur dans Supabase.
@@ -84,11 +85,16 @@ export async function creerClientEtDemande(
   return { demande_id: (dem as { id: string }).id, client_id };
 }
 
-/** Attribue la demande au bon commercial (équité de commission) et passe le statut à 'qualified'. */
+/**
+ * Attribue la demande au bon commercial (équité de commission).
+ * `statutCible` : "qualified" pour un cas simple (entre dans le flux auto),
+ * "new" pour un cas complexe / demande de rappel (reste à trier par un humain).
+ */
 export async function attribuerDemande(
   sb: SupabaseClient,
   demande_id: string,
-  type_prestation: string
+  type_prestation: string,
+  statutCible: Statut = "qualified"
 ): Promise<{ commercial: CommercialAttrib | null; raison: string }> {
   const { data: coms, error } = await sb
     .from("commerciaux")
@@ -99,7 +105,7 @@ export async function attribuerDemande(
   if (!res.commercial) return res;
 
   const com = res.commercial;
-  await sb.from("demandes").update({ commercial_id: com.id, statut: "qualified" }).eq("id", demande_id);
+  await sb.from("demandes").update({ commercial_id: com.id, statut: statutCible }).eq("id", demande_id);
   await sb.from("attributions").insert({
     demande_id,
     commercial_id: com.id,

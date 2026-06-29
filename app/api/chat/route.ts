@@ -103,7 +103,10 @@ export async function POST(req: Request) {
             distance_km: distanceKm,
             valeur_panier_estimee: valeur_panier ?? null,
           });
-          const attr = await attribuerDemande(supabaseAdmin, demande_id, prestation);
+          // Cas simple SANS demande de rappel → qualifié (entre dans le flux auto : appel → contacté).
+          // Cas complexe / urgence / incohérent OU demande de rappel humain → reste "new" (à trier par un commercial).
+          const autoQualifie = evalc.complexite === "simple" && !input.souhaite_rappel;
+          const attr = await attribuerDemande(supabaseAdmin, demande_id, prestation, autoQualifie ? "qualified" : "new");
           if (devis && attr.commercial) {
             await enregistrerDevis(supabaseAdmin, demande_id, devis, { type: "estimation", commercial_id: attr.commercial.id });
           }
@@ -136,7 +139,7 @@ export async function POST(req: Request) {
                   demande_id,
                   client_id,
                   complexite: evalc.complexite,
-                  statut: evalc.complexite === "simple" ? "terminee" : "a_rappeler",
+                  statut: autoQualifie ? "terminee" : "a_rappeler",
                   updated_at: new Date().toISOString(),
                 },
                 { onConflict: "id" }

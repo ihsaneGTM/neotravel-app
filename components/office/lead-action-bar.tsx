@@ -106,6 +106,10 @@ export function LeadActionBar({
               )
             )}
 
+            {action.owner === "commercial" && action.ctaKind === "prendre" && (
+              <StatutButton id={id} cible="qualified" label={action.cta ?? "Prendre en charge"} primary />
+            )}
+
             {action.owner === "commercial" && action.ctaKind === "avancer" && (
               <div className="flex items-center gap-1.5">
                 <StatutButton id={id} cible="won" label="Marquer gagné" primary />

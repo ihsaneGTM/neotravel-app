@@ -10,7 +10,7 @@ import type { Statut } from "@/lib/ui/statuts";
 
 export type ActionOwner = "ia" | "commercial" | "prospect" | "done";
 export type ActionIcon = "sparkles" | "phone" | "file" | "send" | "clock" | "user" | "check" | "x";
-export type CtaKind = "generer" | "envoyer" | "avancer";
+export type CtaKind = "generer" | "envoyer" | "avancer" | "prendre";
 
 export interface LeadActionCtx {
   /** Un devis ferme existe déjà (généré, pas forcément envoyé). */
@@ -48,7 +48,10 @@ export const OWNER_META: Record<ActionOwner, { label: string; icon: ActionIcon; 
 export function leadAction(statut: Statut, ctx: LeadActionCtx = {}): LeadAction {
   switch (statut) {
     case "new":
-      return { owner: "ia", icon: "sparkles", label: "Qualification IA", detail: "L'IA qualifie et attribue ce lead automatiquement — rien à faire de votre côté pour l'instant." };
+      // Post-qualification auto : un lead n'arrive ici QUE si l'IA n'a pas pu le qualifier
+      // (cas complexe : >85 pax, circuit, départ <48h, incohérent) ou s'il a demandé un humain.
+      // → action humaine requise : le commercial le prend en charge pour l'intégrer au pipeline.
+      return { owner: "commercial", icon: "user", label: "À qualifier", detail: "Cas non qualifié automatiquement par l'IA (complexe ou demande de rappel). Prenez-le en charge pour l'intégrer au pipeline.", cta: "Prendre en charge", ctaKind: "prendre" };
     case "qualified":
       return { owner: "ia", icon: "phone", label: "Appel IA (démo)", detail: "Appel commercial et retranscription en cours (simulation démo). Le lead passera en « Contacté » automatiquement." };
     case "contacted":
@@ -91,7 +94,7 @@ export interface BoardColumn {
 }
 
 export const BOARD_COLUMNS: BoardColumn[] = [
-  { key: "new", label: "Nouveau", owner: "ia", hex: "#6f7163" },
+  { key: "new", label: "Nouveau", owner: "commercial", hex: "#6f7163" },
   { key: "qualified", label: "Qualifié", owner: "ia", hex: "#38471f" },
   { key: "contacted", label: "Contacté", owner: "commercial", hex: "#2c3a1b" },
   { key: "devis_envoye", label: "Devis envoyé", owner: "prospect", hex: "#c2d23f" },

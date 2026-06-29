@@ -46,7 +46,7 @@ const dateLong = (d) => `${d.getUTCDate()} ${MOIS[d.getUTCMonth()]} ${d.getUTCFu
 const TYPE_TXT = { aller_simple: "un aller simple", aller_retour: "un aller-retour", circuit: "un circuit" };
 
 /** Transcript IA ↔ prospect réaliste, dérivé des faits de la demande (démo Conversations + fiche). */
-function buildTranscript({ prenom, from, to, presta, pax, typeDeplacement, depart, retour, rappel }) {
+function buildTranscript({ prenom, from, to, presta, pax, typeDeplacement, depart, retour, rappel, escalade }) {
   const t = [];
   const a = (text) => t.push({ role: "assistant", text });
   const u = (text) => t.push({ role: "user", text });
@@ -70,8 +70,11 @@ function buildTranscript({ prenom, from, to, presta, pax, typeDeplacement, depar
     a("Merci ! Il me reste vos coordonnées pour que le commercial vous envoie le devis :\n::contact::");
   }
   u(`${prenom} — coordonnées transmises ✅`);
+  const cloture = escalade
+    ? "\n\nVotre demande sort du cadre standard (groupe important ou trajet sur-mesure) : je la transmets à un conseiller qui vous rappelle dans la journée pour l'étudier précisément."
+    : "\n\nC'est bien noté ? Un commercial vous rappelle dans la journée avec votre devis.";
   a(
-    `Récapitulatif :\n- **Trajet** : ${to ? `${from} → ${to}` : `${from} (mise à disposition)`}\n- **Type** : ${(TYPE_TXT[typeDeplacement] ?? "aller-retour").replace("un ", "").replace("une ", "")}\n- **Départ** : ${dateLong(depart)} à 9h${retour ? `\n- **Retour** : ${dateLong(retour)}` : ""}\n- **Voyageurs** : ${pax}\n\nC'est bien noté ? Un commercial vous rappelle dans la journée avec votre devis.`
+    `Récapitulatif :\n- **Trajet** : ${to ? `${from} → ${to}` : `${from} (mise à disposition)`}\n- **Type** : ${(TYPE_TXT[typeDeplacement] ?? "aller-retour").replace("un ", "").replace("une ", "")}\n- **Départ** : ${dateLong(depart)} à 9h${retour ? `\n- **Retour** : ${dateLong(retour)}` : ""}\n- **Voyageurs** : ${pax}${cloture}`
   );
   u("Oui c'est parfait, merci !");
   a("Votre demande est transmise 🚌 Un conseiller NeoTravel revient vers vous très vite. Belle journée !");
@@ -152,7 +155,9 @@ for (let i = 0; i < N; i++) {
       canal,
       // ~8 % de demandes où le prospect a réclamé un rappel humain (badge « Rappel demandé »).
       options: rappel ? ["contact_humain"] : [],
-      complexite: "simple",
+      // Cohérence pipeline : un lead reste "Nouveau" UNIQUEMENT s'il n'a pas pu être qualifié
+      // automatiquement (cas complexe). Les leads qualifiés+ viennent forcément d'un cas simple.
+      complexite: statut === "new" ? "complexe" : "simple",
       distance_km: route.km,
       valeur_panier_estimee: panier,
       date_demande: isoDate(createdAt),
@@ -204,6 +209,7 @@ for (let i = 0; i < N; i++) {
       depart,
       retour,
       rappel,
+      escalade: statut === "new",
     });
     const convEnd = new Date(createdAt.getTime() + rndi(4, 18) * 60_000); // ~5-18 min d'échange
     const last = transcript[transcript.length - 1].text.split("\n")[0].slice(0, 120);
@@ -211,8 +217,10 @@ for (let i = 0; i < N; i++) {
       id: randomUUID(),
       client_id: cli.id,
       demande_id: dem.id,
-      statut: rappel ? "a_rappeler" : "terminee",
-      complexite: "simple",
+      // Une conversation "terminée" implique un lead qualifié+ : un lead "Nouveau" (non qualifié)
+      // ne peut avoir qu'une conversation escaladée "à rappeler".
+      statut: statut === "new" || rappel ? "a_rappeler" : "terminee",
+      complexite: statut === "new" ? "complexe" : "simple",
       transcript,
       dernier_message: last,
       nb_messages: transcript.length,
