@@ -102,6 +102,7 @@ export async function POST(req: Request) {
           // Cas SIMPLE : estimation PROVISOIRE envoyée automatiquement par email (à confirmer par un conseiller).
           // ⚠️ Divergence assumée vs règle .md « l'IA ne communique jamais de prix » : ici c'est un email
           // système clairement indicatif (pas le chatbot), demandé pour accélérer les cas simples.
+          let estimationEnvoyee = false;
           if (evalc.complexite === "simple" && devis && input.contact?.email) {
             try {
               const clientNom = [input.contact.prenom, input.contact.nom].filter(Boolean).join(" ") || "client";
@@ -109,6 +110,7 @@ export async function POST(req: Request) {
               const dates = `${dateFR(input.date_depart)}${input.date_retour ? ` → ${dateFR(input.date_retour)}` : ""}`;
               const { subject, html } = renderEstimationEmail({ client: clientNom, trajet, dates, nb_voyageurs: input.nb_voyageurs, prix_ttc: devis.prix_ttc });
               await sendEmail({ to: input.contact.email, subject, html });
+              estimationEnvoyee = true;
             } catch {
               /* email non configuré → on n'échoue pas : le commercial enverra le devis ferme */
             }
@@ -135,7 +137,14 @@ export async function POST(req: Request) {
             }
           }
 
-          return { ok: true as const, demande_id, commercial: attr.commercial?.nom ?? null };
+          return {
+            ok: true as const,
+            demande_id,
+            commercial: attr.commercial?.nom ?? null,
+            // Vrai uniquement si une estimation provisoire a réellement été envoyée par email (cas simple).
+            estimation_envoyee: estimationEnvoyee,
+            email: estimationEnvoyee ? input.contact?.email ?? null : null,
+          };
         },
       }),
     },

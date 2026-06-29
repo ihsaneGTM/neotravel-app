@@ -3,9 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Phone, TriangleAlert, Clock, CircleCheck, Check, X } from "lucide-react";
+import { Phone, TriangleAlert, Clock, CircleCheck, Check, X, Send } from "lucide-react";
 import type { FollowupsData, FollowupItem } from "@/lib/dashboard/office-data";
-import { completerRelance, annulerRelance } from "@/app/commercial/actions";
+import { envoyerRelance, completerRelance, annulerRelance } from "@/app/commercial/actions";
 import { Kpi } from "./ui";
 
 type Filtre = "all" | "overdue" | "pending" | "completed";
@@ -83,17 +83,23 @@ function Row({ i }: { i: FollowupItem }) {
         </p>
       </div>
       {!done && !cancelled && (
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 items-center gap-2">
+          <form action={envoyerRelance}>
+            <input type="hidden" name="id" value={i.id} />
+            <button className="nt-btn-lime nt-press flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium" title="Envoyer l'email de relance au prospect maintenant">
+              <Send className="h-3.5 w-3.5" /> Envoyer la relance
+            </button>
+          </form>
           <form action={completerRelance}>
             <input type="hidden" name="id" value={i.id} />
-            <button className="nt-press flex items-center gap-1.5 rounded-lg bg-[var(--ink)] px-3 py-1.5 text-xs font-medium text-[var(--cream)] hover:bg-[#20231a]">
-              <Check className="h-3.5 w-3.5" /> Compléter
+            <button className="nt-press flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] hover:bg-[var(--bg-soft)]" title="Marquer comme traitée sans envoyer d'email (ex. relance téléphonique)">
+              <Check className="h-3.5 w-3.5" /> Fait
             </button>
           </form>
           <form action={annulerRelance}>
             <input type="hidden" name="id" value={i.id} />
-            <button className="nt-press flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] hover:bg-[var(--bg-soft)]">
-              <X className="h-3.5 w-3.5" /> Annuler
+            <button className="nt-press flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] hover:bg-[var(--bg-soft)]" title="Annuler cette relance">
+              <X className="h-3.5 w-3.5" />
             </button>
           </form>
         </div>

@@ -88,6 +88,60 @@ export function renderDevisEmail(input: {
 }
 
 /**
+ * Email de RELANCE d'un devis envoyé (cadence J+1 / J+3 / J+7).
+ * Ton adapté à l'ancienneté : rappel doux → invitation à finaliser.
+ */
+export function renderRelanceEmail(input: {
+  numero: string;
+  client: string;
+  trajet: string;
+  dates: string;
+  prix_ttc: number;
+  /** "j1" | "j3" | "j7" | autre — module le ton. */
+  type: string;
+  signUrl?: string;
+}): { subject: string; html: string } {
+  const eur = (n: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 0 }).format(n);
+  const intro =
+    input.type === "j1"
+      ? "Avez-vous bien reçu le devis que nous vous avons adressé ? Je me permets un petit mot pour m'assurer qu'il vous est bien parvenu."
+      : input.type === "j7"
+      ? "Votre projet de déplacement est toujours d'actualité ? Votre devis reste disponible — n'hésitez pas si vous souhaitez en discuter ou l'ajuster."
+      : "Je reviens vers vous au sujet de votre devis. Restez-vous sur ce projet ? Je suis à votre disposition pour toute question.";
+  const subject =
+    input.type === "j1"
+      ? `Avez-vous reçu votre devis ${input.numero} ?`
+      : `Votre devis NeoTravel ${input.numero} — toujours d'actualité ?`;
+
+  const html = `<!doctype html><html><body style="margin:0;background:#f4f3e8;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:28px 20px;">
+    <div style="background:#ffffff;border:1px solid #e6e4d6;border-radius:18px;overflow:hidden;box-shadow:0 4px 16px rgba(22,23,14,.06);">
+      <div style="background:#16170e;padding:24px 28px;">
+        <p style="margin:0;font-size:13px;font-weight:800;color:#ffffff;">Neo<span style="color:#d8e762;">Travel</span></p>
+        <p style="margin:4px 0 0;font-size:11px;color:rgba(255,255,255,.6);">Transport d'autocars avec chauffeur</p>
+      </div>
+      <div style="padding:28px;">
+        <h1 style="margin:0 0 4px;font-size:20px;color:#16170e;font-weight:800;">Bonjour ${input.client},</h1>
+        <p style="margin:0 0 20px;color:#595b4c;font-size:14px;line-height:1.5;">${intro}</p>
+        <table style="width:100%;font-size:14px;border-collapse:collapse;">
+          <tr><td style="padding:7px 0;color:#8a8c7d;border-bottom:1px solid #f1f0e6;">Devis</td><td style="padding:7px 0;text-align:right;color:#16170e;font-weight:600;border-bottom:1px solid #f1f0e6;">${input.numero}</td></tr>
+          <tr><td style="padding:7px 0;color:#8a8c7d;border-bottom:1px solid #f1f0e6;">Trajet</td><td style="padding:7px 0;text-align:right;color:#16170e;font-weight:600;border-bottom:1px solid #f1f0e6;">${input.trajet}</td></tr>
+          <tr><td style="padding:7px 0;color:#8a8c7d;border-bottom:1px solid #f1f0e6;">Dates</td><td style="padding:7px 0;text-align:right;color:#16170e;font-weight:600;border-bottom:1px solid #f1f0e6;">${input.dates}</td></tr>
+          <tr><td style="padding:7px 0;color:#8a8c7d;">Tarif TTC</td><td style="padding:7px 0;text-align:right;color:#16170e;font-weight:700;">${eur(input.prix_ttc)}</td></tr>
+        </table>
+        ${input.signUrl ? `<div style="margin-top:22px;text-align:center;">
+          <a href="${input.signUrl}" style="display:inline-block;background:#16170e;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 30px;border-radius:999px;">Consulter et signer le devis →</a>
+          <p style="margin:10px 0 0;font-size:11px;color:#8a8c7d;">Acceptez votre devis en un clic, ou demandez une modification.</p>
+        </div>` : ""}
+        <p style="margin:22px 0 0;color:#8a8c7d;font-size:12px;line-height:1.5;">Si vous avez déjà donné suite, merci de ne pas tenir compte de ce message. Votre conseiller NeoTravel reste à votre écoute.</p>
+      </div>
+    </div>
+    <p style="text-align:center;margin:16px 0 0;color:#8a8c7d;font-size:11px;">NeoTravel · devis@neotravel.fr · 01 84 80 12 34</p>
+  </div></body></html>`;
+  return { subject, html };
+}
+
+/**
  * Estimation PROVISOIRE envoyée automatiquement pour les demandes simples.
  * Clairement indicative et sujette à confirmation — un conseiller envoie le devis définitif.
  */

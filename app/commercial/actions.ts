@@ -16,6 +16,7 @@ import {
 } from "@/lib/pricing/devis-ajuste";
 import { estimerDistanceKm } from "@/lib/geo/distance";
 import { sendEmail, renderDevisEmail } from "@/lib/email/resend";
+import { envoyerRelanceCore } from "@/lib/relances/envoi";
 import { generateDevisPDF } from "@/lib/pdf/devis-pdf";
 import { getRelancesCadence } from "@/lib/config/app-config";
 import { PROD_URL } from "@/lib/studio/config";
@@ -374,7 +375,16 @@ export async function envoyerDevis(formData: FormData) {
   revalidatePath("/follow-ups");
 }
 
-/** Marque une relance comme effectuée. */
+/** Envoie réellement l'email de relance au prospect, puis marque la relance comme envoyée. */
+export async function envoyerRelance(formData: FormData) {
+  const id = String(formData.get("id"));
+  const res = await envoyerRelanceCore(supabaseAdmin, id);
+  revalidatePath("/follow-ups");
+  revalidatePath("/dashboard");
+  if (!res.ok && !res.skipped) throw new Error(`Envoi de la relance impossible : ${res.error}`);
+}
+
+/** Marque une relance comme effectuée (sans envoi d'email — ex. relance passée par téléphone). */
 export async function completerRelance(formData: FormData) {
   const id = String(formData.get("id"));
   await supabaseAdmin.from("relances").update({ statut: "envoyee", envoyee_at: new Date().toISOString() }).eq("id", id);
