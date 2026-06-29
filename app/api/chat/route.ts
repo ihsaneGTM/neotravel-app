@@ -9,6 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { creerClientEtDemande, attribuerDemande, enregistrerDevis } from "@/lib/crm";
 import { sendEmail, renderEstimationEmail } from "@/lib/email/resend";
 import { dateFR } from "@/lib/ui/format";
+import { STATUT_REPRISE } from "@/lib/conversations/live";
 
 export const maxDuration = 30;
 
@@ -29,6 +30,14 @@ function toSimple(messages: UIMessage[]) {
 export async function POST(req: Request) {
   const { messages, id }: { messages: UIMessage[]; id?: string } = await req.json();
   const today = new Date().toISOString().slice(0, 10);
+
+  // Reprise humaine : si un commercial pilote la conversation, l'IA se tait.
+  if (id) {
+    const { data } = await supabaseAdmin.from("conversations").select("statut").eq("id", id).maybeSingle();
+    if ((data as { statut?: string } | null)?.statut === STATUT_REPRISE) {
+      return new Response(JSON.stringify({ paused: true }), { status: 409, headers: { "content-type": "application/json" } });
+    }
+  }
 
   const result = streamText({
     model: MODELS.agent,

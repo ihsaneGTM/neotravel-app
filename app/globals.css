@@ -440,6 +440,26 @@ body {
 }
 .ntr-route-label span { color: var(--forest); }
 
+/* ── Reprise en main par un humain ──────────────────────────────── */
+@keyframes nt-takeover-in {
+  0% { opacity: 0; transform: translateY(8px) scale(0.96); }
+  60% { opacity: 1; transform: translateY(0) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.nt-takeover-in { animation: nt-takeover-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes nt-takeover-banner {
+  0% { opacity: 0; transform: translateY(-10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.nt-takeover-banner { animation: nt-takeover-banner 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes nt-human-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(44, 58, 27, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(44, 58, 27, 0.14); }
+}
+.nt-human-pulse { animation: nt-human-glow 2.4s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .nt-clouds::before,
   .nt-live-lime,
@@ -447,7 +467,10 @@ body {
   .nt-pop,
   .ntr-flow,
   .ntr-veh,
-  .ntr-badge-dot {
+  .ntr-badge-dot,
+  .nt-takeover-in,
+  .nt-takeover-banner,
+  .nt-human-pulse {
     animation: none !important;
   }
 }

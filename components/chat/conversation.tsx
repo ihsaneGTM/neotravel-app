@@ -4,6 +4,10 @@ import { useChat } from "@ai-sdk/react";
 import { useEffect, useRef, useState } from "react";
 import { Rich } from "@/components/ui/rich-text";
 
+type LiveMsg = { role: string; text: string; author?: string; event?: string };
+const initiales = (nom: string) =>
+  nom.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "C";
+
 /** Marqueurs émis par l'agent pour afficher des éléments interactifs. */
 function parseMarkers(text: string) {
   const lines = text.split("\n");
@@ -42,6 +46,33 @@ export function Conversation({
   const startedRef = useRef(false);
   const busy = status === "submitted" || status === "streaming";
 
+  // Reprise humaine : on interroge l'état live ; si un conseiller pilote, l'IA se tait.
+  const [human, setHuman] = useState(false);
+  const [conseiller, setConseiller] = useState<string | null>(null);
+  const [liveTranscript, setLiveTranscript] = useState<LiveMsg[]>([]);
+  const [sendingHuman, setSendingHuman] = useState(false);
+  const wasHuman = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      try {
+        const r = await fetch(`/api/conversations/${convId}/live`, { cache: "no-store" });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!alive || !d.exists) return;
+        const isHuman = d.mode === "humain";
+        setHuman(isHuman);
+        setConseiller(d.commercial ?? null);
+        if (isHuman || wasHuman.current) setLiveTranscript(Array.isArray(d.transcript) ? d.transcript : []);
+        if (isHuman) wasHuman.current = true;
+      } catch { /* réessai au prochain tick */ }
+    };
+    const iv = setInterval(poll, 2500);
+    poll();
+    return () => { alive = false; clearInterval(iv); };
+  }, [convId]);
+
   // Auto-amorçage : envoie le trajet composé dans le hero une seule fois.
   useEffect(() => {
     if (initialMessage && !startedRef.current) {
@@ -52,16 +83,73 @@ export function Conversation({
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, status]);
+  }, [messages, status, liveTranscript.length, human]);
 
-  const send = (text: string) => {
-    if (!text.trim() || busy) return;
+  const send = async (text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    // Mode humain : on poste au conseiller (pas à l'IA).
+    if (human) {
+      setSendingHuman(true);
+      setLiveTranscript((prev) => [...prev, { role: "user", text: t }]);
+      try {
+        await fetch(`/api/conversations/${convId}/message`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: t }),
+        });
+      } catch { /* réseau : le message réapparaîtra au prochain poll si échec */ }
+      setSendingHuman(false);
+      return;
+    }
+    if (busy) return;
     sendMessage({ text });
   };
 
   return (
     <div className="lp-chat">
       <div className="lp-chat-scroll">
+        {human && <TakeoverBanner conseiller={conseiller} />}
+
+        {human ? (
+          <HumanThread transcript={liveTranscript} />
+        ) : (
+          <AiThread />
+        )}
+        <div ref={endRef} />
+      </div>
+
+      <form
+        className="lp-chat-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const t = input.trim();
+          if (!t || (human ? sendingHuman : busy)) return;
+          send(t);
+          setInput("");
+        }}
+      >
+        <input
+          className="lp-chat-input"
+          placeholder={human ? `Écrivez à ${conseiller ?? "votre conseiller"}…` : "Écrivez votre réponse…"}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          disabled={human ? sendingHuman : busy}
+          autoFocus
+        />
+        <button type="submit" className="lp-chat-send" disabled={(human ? sendingHuman : busy) || !input.trim()} aria-label="Envoyer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </button>
+      </form>
+    </div>
+  );
+
+  // ── Rendu mode IA (agent) ────────────────────────────────────────────
+  function AiThread() {
+    return (
+      <>
         {messages.length === 0 && !initialMessage && <Bubble role="assistant">{greeting}</Bubble>}
 
         {messages.map((m, i) => {
@@ -91,34 +179,70 @@ export function Conversation({
             <i /><i /><i />
           </div>
         )}
-        <div ref={endRef} />
-      </div>
+      </>
+    );
+  }
+}
 
-      <form
-        className="lp-chat-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const t = input.trim();
-          if (!t || busy) return;
-          send(t);
-          setInput("");
-        }}
-      >
-        <input
-          className="lp-chat-input"
-          placeholder="Écrivez votre réponse…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          disabled={busy}
-          autoFocus
-        />
-        <button type="submit" className="lp-chat-send" disabled={busy || !input.trim()} aria-label="Envoyer">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12h14M13 6l6 6-6 6" />
-          </svg>
-        </button>
-      </form>
+/** Bandeau « un conseiller a rejoint » côté prospect (effet de reprise en main). */
+function TakeoverBanner({ conseiller }: { conseiller: string | null }) {
+  return (
+    <div
+      className="nt-takeover-banner"
+      style={{
+        display: "flex", alignItems: "center", gap: 8, alignSelf: "stretch",
+        background: "var(--forest)", color: "var(--cream)", borderRadius: 14,
+        padding: "10px 14px", marginBottom: 4, fontSize: "0.82rem", fontWeight: 600,
+      }}
+    >
+      <span style={{ display: "inline-grid", placeItems: "center", width: 22, height: 22, borderRadius: 999, background: "rgba(255,255,255,.18)" }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11a9 9 0 0 1 18 0M21 16v1a3 3 0 0 1-3 3h-3M3 11v3a2 2 0 0 0 2 2h1v-6H5a2 2 0 0 0-2 2zM18 11v5h1a2 2 0 0 0 2-2v-1" /></svg>
+      </span>
+      {conseiller ? `${conseiller} a rejoint la conversation` : "Un conseiller a rejoint la conversation"}
     </div>
+  );
+}
+
+/** Fil en mode reprise humaine côté prospect : prospect (droite), conseiller (gauche, humain), évènements (centre). */
+function HumanThread({ transcript }: { transcript: LiveMsg[] }) {
+  let lastSystem = -1;
+  transcript.forEach((m, i) => { if (m.role === "system") lastSystem = i; });
+  return (
+    <>
+      {transcript.map((m, i) => {
+        if (m.role === "system") {
+          return (
+            <div key={i} className={i === lastSystem ? "nt-takeover-in" : ""} style={{ alignSelf: "center", fontSize: "0.72rem", color: "var(--ink-soft, #777)", padding: "2px 0" }}>
+              {m.text}
+            </div>
+          );
+        }
+        if (m.role === "user") {
+          if (!m.text.trim()) return null;
+          return <Bubble key={i} role="user">{m.text}</Bubble>;
+        }
+        if (m.role === "commercial") {
+          if (!m.text.trim()) return null;
+          return (
+            <div key={i} style={{ alignSelf: "flex-start", display: "flex", alignItems: "flex-end", gap: 8, maxWidth: "85%" }}>
+              <span style={{ display: "grid", placeItems: "center", width: 26, height: 26, borderRadius: 999, background: "var(--forest)", color: "var(--cream)", fontSize: "0.62rem", fontWeight: 700, flexShrink: 0 }}>
+                {initiales(m.author ?? "")}
+              </span>
+              <div>
+                <p style={{ fontSize: "0.66rem", fontWeight: 700, color: "var(--forest)", margin: "0 0 2px 2px" }}>{m.author ?? "Conseiller"}</p>
+                <div className="lp-bubble lp-bubble-bot" style={{ borderColor: "var(--forest)" }}>
+                  <Rich text={m.text} />
+                </div>
+              </div>
+            </div>
+          );
+        }
+        // assistant (historique IA avant la reprise) — texte seul, sans widgets
+        const { display } = parseMarkers(m.text);
+        if (!display) return null;
+        return <Bubble key={i} role="assistant">{display}</Bubble>;
+      })}
+    </>
   );
 }
 
